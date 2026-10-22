@@ -6,6 +6,8 @@ from http.cookies import SimpleCookie
 from datetime import datetime, timezone
 from openpyxl import Workbook, load_workbook
 
+SUBJECT_CATALOG=['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lí', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lí', 'Giáo dục công dân', 'Tin học', 'Công nghệ', 'Khoa học tự nhiên', 'Âm nhạc', 'Mĩ thuật', 'Giáo dục thể chất', 'Hoạt động trải nghiệm']
+
 ROOT=Path(__file__).parent
 DB=Path(os.environ.get('SMARTCLASS_DB',str(ROOT/'smartclass.db')))
 DB.parent.mkdir(parents=True,exist_ok=True)
@@ -112,10 +114,11 @@ class H(BaseHTTPRequestHandler):
   return u
  def do_GET(self):
   p=urlparse(self.path).path
+  if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':False,'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -251,6 +254,31 @@ class H(BaseHTTPRequestHandler):
    cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
    if 'scsession' in cookie:SESSIONS.pop(cookie['scsession'].value,None)
    return self.sendj(200,{'ok':True},{'Set-Cookie':'scsession=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/'})
+  if p=='/api/planner/docx':
+   from docx import Document
+   from docx.shared import Cm, Pt
+   from docx.enum.text import WD_ALIGN_PARAGRAPH
+   textfields=['school','teacher','subject','grade','title','periods','knowledge','skills','qualities','digital','digital_evidence','resources','warmup','explore','practice','apply']
+   vals={k:str(d.get(k,'')).strip()[:8000] for k in textfields}
+   if not vals['title'] or not vals['subject']:return self.err(400,'Vui lòng nhập môn học và tên bài dạy.')
+   doc=Document();sec=doc.sections[0];sec.top_margin=Cm(2);sec.bottom_margin=Cm(2);sec.left_margin=Cm(2.5);sec.right_margin=Cm(2)
+   normal=doc.styles['Normal'];normal.font.name='Times New Roman';normal.font.size=Pt(13)
+   top=doc.add_paragraph(f"Trường: {vals['school']}\nGiáo viên: {vals['teacher']}")
+   heading=doc.add_heading('KẾ HOẠCH BÀI DẠY',0);heading.alignment=WD_ALIGN_PARAGRAPH.CENTER
+   doc.add_heading(vals['title'],level=1)
+   doc.add_paragraph(f"Môn học: {vals['subject']}     Lớp: {vals['grade']}     Thời gian thực hiện: {vals['periods']} tiết")
+   doc.add_heading('I. MỤC TIÊU',level=1)
+   for title,key in [('1. Kiến thức','knowledge'),('2. Năng lực','skills'),('3. Phẩm chất','qualities'),('4. Năng lực số dự kiến phát triển','digital'),('Minh chứng đánh giá năng lực số','digital_evidence')]:
+    doc.add_heading(title,level=2);doc.add_paragraph(vals[key] or '(Giáo viên bổ sung)')
+   doc.add_heading('II. THIẾT BỊ DẠY HỌC VÀ HỌC LIỆU',level=1);doc.add_paragraph(vals['resources'])
+   doc.add_heading('III. TIẾN TRÌNH DẠY HỌC',level=1)
+   for title,key in [('Hoạt động 1. Mở đầu','warmup'),('Hoạt động 2. Hình thành kiến thức','explore'),('Hoạt động 3. Luyện tập','practice'),('Hoạt động 4. Vận dụng','apply')]:
+    doc.add_heading(title,level=2);doc.add_paragraph(vals[key] or '(Giáo viên bổ sung mục tiêu, nội dung, sản phẩm, tổ chức thực hiện)')
+   doc.add_paragraph('Lưu ý: Mẫu hỗ trợ soạn theo Phụ lục IV CV5512; giáo viên tự rà soát nội dung và yêu cầu chuyên môn.')
+   buffer=io.BytesIO();doc.save(buffer);raw=buffer.getvalue();self.send_response(200)
+   self.send_header('Content-Type','application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+   self.send_header('Content-Disposition','attachment; filename="Ke_hoach_bai_day_5512.docx"')
+   self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control','no-store');self.end_headers();return self.wfile.write(raw)
   if p=='/api/classes':
    name=str(d.get('name','')).strip()[:100];grade=str(d.get('grade','')).strip()[:25]
    if len(name)<2:return self.err(400,'Tên lớp cần ít nhất 2 ký tự.')
@@ -311,6 +339,24 @@ class H(BaseHTTPRequestHandler):
      c.executemany('INSERT INTO students(code,name,class_id) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET name=excluded.name,class_id=excluded.class_id',entries)
     return self.sendj(200,{'imported':len(entries)})
    except (ValueError,KeyError,TypeError,base64.binascii.Error,sqlite3.Error,Exception) as e:return self.err(400,'Không đọc được Excel. Hãy dùng mẫu xuất từ SmartClassAI, tối đa 300 học sinh.')
+  if p=='/api/demo/multisubject':
+   # Teacher-only demo fixture. Never pass demo scores off as genuine learning outcomes.
+   sample=[('Toán', '8', 'Đại số', 'Giá trị của 3² là bao nhiêu?', '6', '9', '12', '8', 'B', 'Nhận biết', '3² = 3 × 3 = 9.', 'demo-multisubject'), ('Ngữ văn', '8', 'Tiếng Việt', 'Từ nào sau đây là từ láy?', 'Học sinh', 'Lấp lánh', 'Sách vở', 'Bàn ghế', 'B', 'Nhận biết', 'Lấp lánh là từ láy.', 'demo-multisubject'), ('Tiếng Anh', '8', 'Ngữ pháp', 'Choose the correct form: She ___ to school every day.', 'go', 'goes', 'going', 'gone', 'B', 'Nhận biết', 'She goes: ngôi thứ ba số ít ở hiện tại đơn.', 'demo-multisubject'), ('Vật lí', '8', 'Chuyển động', 'Đơn vị SI của vận tốc là gì?', 'm/s', 'kg', 'N', 'J', 'A', 'Nhận biết', 'Vận tốc có đơn vị SI là mét trên giây.', 'demo-multisubject'), ('Hóa học', '8', 'Chất và nguyên tử', 'Kí hiệu hóa học của nguyên tố oxi là gì?', 'Ox', 'O', 'Om', 'H', 'B', 'Nhận biết', 'O là kí hiệu nguyên tố oxi.', 'demo-multisubject'), ('Sinh học', '8', 'Tế bào', 'Bộ phận nào giúp tế bào thực vật quang hợp?', 'Nhân', 'Lục lạp', 'Màng sinh chất', 'Không bào', 'B', 'Nhận biết', 'Lục lạp có diệp lục thực hiện quang hợp.', 'demo-multisubject'), ('Lịch sử', '8', 'Lịch sử Việt Nam', 'Chiến thắng Bạch Đằng năm 938 gắn với ai?', 'Ngô Quyền', 'Trần Hưng Đạo', 'Lê Lợi', 'Quang Trung', 'A', 'Nhận biết', 'Ngô Quyền lãnh đạo chiến thắng Bạch Đằng năm 938.', 'demo-multisubject'), ('Địa lí', '8', 'Địa lí tự nhiên', 'Lớp khí bao quanh Trái Đất được gọi là gì?', 'Thủy quyển', 'Khí quyển', 'Thạch quyển', 'Sinh quyển', 'B', 'Nhận biết', 'Khí quyển là lớp khí bao quanh Trái Đất.', 'demo-multisubject'), ('Giáo dục công dân', '8', 'Quyền và nghĩa vụ', 'Hành vi nào thể hiện tôn trọng người khác?', 'Lắng nghe ý kiến', 'Chế giễu bạn', 'Ngắt lời', 'Lan truyền tin đồn', 'A', 'Nhận biết', 'Lắng nghe là biểu hiện tôn trọng.', 'demo-multisubject'), ('Tin học', '8', 'An toàn số', 'Mật khẩu nào an toàn hơn?', '123456', 'password', 'Một mật khẩu dài và riêng biệt', 'Ngày sinh', 'C', 'Nhận biết', 'Mật khẩu dài, khó đoán và riêng cho từng tài khoản an toàn hơn.', 'demo-multisubject'), ('Công nghệ', '8', 'Thiết kế kĩ thuật', 'Bước đầu của quy trình thiết kế kĩ thuật là gì?', 'Chế tạo hàng loạt', 'Xác định vấn đề', 'Đóng gói sản phẩm', 'Quảng cáo', 'B', 'Nhận biết', 'Cần xác định vấn đề trước khi đề xuất giải pháp.', 'demo-multisubject'), ('Khoa học tự nhiên', '8', 'Kĩ năng thực nghiệm', 'Dụng cụ nào thường dùng để đo nhiệt độ?', 'Thước', 'Cân', 'Nhiệt kế', 'Đồng hồ', 'C', 'Nhận biết', 'Nhiệt kế dùng để đo nhiệt độ.', 'demo-multisubject'), ('Âm nhạc', '8', 'Nhạc lí', 'Một nốt đen thông thường có trường độ bằng mấy nốt móc đơn?', '1', '2', '3', '4', 'B', 'Nhận biết', 'Một nốt đen bằng hai nốt móc đơn.', 'demo-multisubject'), ('Mĩ thuật', '8', 'Màu sắc', 'Ba màu cơ bản truyền thống trong hội họa là gì?', 'Đỏ, vàng, xanh lam', 'Đen, trắng, xám', 'Lục, tím, nâu', 'Cam, lục, tím', 'A', 'Nhận biết', 'Bộ màu cơ bản truyền thống: đỏ, vàng, xanh lam.', 'demo-multisubject'), ('Giáo dục thể chất', '8', 'An toàn luyện tập', 'Trước khi vận động mạnh nên làm gì?', 'Bỏ khởi động', 'Khởi động phù hợp', 'Uống thật nhiều nước một lúc', 'Tập ngay tối đa', 'B', 'Nhận biết', 'Khởi động giúp chuẩn bị cơ thể cho vận động.', 'demo-multisubject'), ('Hoạt động trải nghiệm', '8', 'Kĩ năng hợp tác', 'Khi làm việc nhóm, cách nào giúp hợp tác hiệu quả?', 'Không chia sẻ nhiệm vụ', 'Phân công rõ và lắng nghe', 'Chỉ nghe một người', 'Không phản hồi', 'B', 'Nhận biết', 'Phân công và lắng nghe giúp nhóm hợp tác.', 'demo-multisubject')]
+   made=0
+   with db() as c:
+    for row in sample:
+     exists=c.execute('SELECT id FROM questions WHERE subject=? AND content=? AND origin=?',(row[0],row[3],'demo-multisubject')).fetchone()
+     if exists:continue
+     c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',row)
+     made+=1
+    for subject in SUBJECT_CATALOG:
+     qids=[v[0] for v in c.execute('SELECT id FROM questions WHERE subject=? AND origin=? ORDER BY id LIMIT 10',(subject,'demo-multisubject')).fetchall()]
+     if not qids:continue
+     title='Ôn tập '+subject+' [MINH HỌA]'
+     if c.execute('SELECT 1 FROM exams WHERE title=?',(title,)).fetchone():continue
+     eid=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,0)',(title,subject,'8',15)).lastrowid
+     c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,q,i) for i,q in enumerate(qids)])
+   return self.sendj(200,{'ok':True,'added':made,'subjects':len(SUBJECT_CATALOG),'notice':'DỮ LIỆU MINH HỌA: Giáo viên phải rà soát đáp án và sửa theo chương trình từng lớp. Đề mẫu mặc định chưa công bố.'})
   if p=='/api/demo/seed':
    with db() as c:
     if c.execute("SELECT 1 FROM demo_meta WHERE k='seeded'").fetchone():return self.sendj(200,{'ok':True,'already':True})
