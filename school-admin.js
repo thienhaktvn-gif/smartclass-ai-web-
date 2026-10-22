@@ -20,6 +20,41 @@ get('schoolUnselect').onclick=()=>{selected.clear();get('studentList').querySele
 get('studentList').addEventListener('click',e=>{const b=e.target.closest('[data-school-move]');if(b){selected.clear();selected.add(+b.dataset.schoolMove);get('studentList').querySelectorAll('.school-select').forEach(c=>c.checked=selected.has(+c.dataset.sid));updateSelected();box.querySelector('details').open=true;box.scrollIntoView({behavior:'smooth'})}});
 async function bulk(kind){const ids=[...selected],cid=+get('schoolDestination').value;if(!ids.length){alert('Hãy chọn học sinh trước.');return}const isDelete=kind==='delete';if(!confirm(isDelete?'Xóa vĩnh viễn '+ids.length+' học sinh và lịch sử điểm danh liên quan?':'Chuyển '+ids.length+' học sinh sang lớp đã chọn?'))return;try{const d=await request(isDelete?'students/bulk-delete':'students/move',isDelete?{ids,confirm:'XOA_HOC_SINH'}:{ids,class_id:cid});selected.clear();updateSelected();status.textContent=isDelete?'Đã xóa '+d.deleted+' học sinh.':'Đã chuyển lớp '+d.moved+' học sinh.';await loadClasses()}catch(e){status.textContent=e.message}}
 get('schoolMove').onclick=()=>bulk('move');get('schoolDelete').onclick=()=>bulk('delete');
-const list=get('classList');list.addEventListener('click',async e=>{const b=e.target.closest('[data-school-delete-class]');if(!b)return;const cid=+b.dataset.schoolDeleteClass;if(!confirm('Xóa lớp trống này?'))return;try{await request('classes/delete',{id:cid});await loadClasses();status.textContent='Đã xóa lớp trống.'}catch(err){status.textContent=err.message}});
-const classObs=new MutationObserver(()=>{classObs.disconnect();list.querySelectorAll('.item').forEach(item=>{if(item.querySelector('[data-school-delete-class]'))return;const title=item.querySelector('strong');const match=[...get('studentClass').options].find(o=>o.textContent.includes(title?.textContent.split('Khối')[0].replace('♧','').trim()));if(!match)return;const b=document.createElement('button');b.type='button';b.className='ghost small';b.textContent='Xóa lớp trống';b.dataset.schoolDeleteClass=match.value;item.append(b)});classObs.observe(list,{childList:true})});classObs.observe(list,{childList:true});
+// Dedicated management panel uses true class IDs from the API, never guesses IDs from label text.
+const classArea=document.createElement('section');classArea.className='card';classArea.style.margin='14px 0';
+classArea.innerHTML='<h3>✎ Đổi tên hoặc xóa lớp</h3><p class="muted">Chọn đúng lớp theo mã hệ thống. Lớp còn học sinh không thể xóa: hãy chuyển học sinh trước.</p><div id="schoolClassesManager"></div><p id="schoolClassesMsg" role="status"></p>';
+get('classList').after(classArea);
+const manager=classArea.querySelector('#schoolClassesManager'),feedback=classArea.querySelector('#schoolClassesMsg');
+const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let classBusy=false;
+async function updateClassManager(){
+ if(classBusy)return;classBusy=true;
+ try{
+  const r=await fetch('/api/classes',{credentials:'same-origin'});
+  const d=await r.json();if(!r.ok)throw Error(d.error||'Không đọc được lớp học');
+  manager.innerHTML=d.items.map(c=>`<div class="item" data-class-id="${c.id}" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:9px"><div style="flex:1;min-width:150px"><strong>${escapeHTML(c.name)}</strong><div class="meta">Khối ${escapeHTML(c.grade)} · ${c.student_count} học sinh · Mã lớp #${c.id}</div></div><button type="button" class="ghost small" data-school-rename="${c.id}">✎ Đổi tên</button><button type="button" class="ghost small" data-school-delete-class="${c.id}" ${c.student_count>0?'disabled title="Chuyển học sinh đi trước khi xóa"':''}>Xóa lớp trống</button></div>`).join('')||'<p>Chưa có lớp học.</p>';
+ }catch(err){feedback.textContent=err.message}finally{classBusy=false}
+}
+manager.addEventListener('click',async e=>{
+ const rename=e.target.closest('[data-school-rename]');const del=e.target.closest('[data-school-delete-class]');if(!rename&&!del)return;
+ const id=Number((rename||del).dataset.schoolRename||(rename||del).dataset.schoolDeleteClass);
+ if(rename){
+  const current=manager.querySelector(`[data-class-id="${id}"] strong`)?.textContent||'';
+  const name=prompt('Nhập tên lớp mới:',current);if(name===null)return;
+  if(name.trim().length<2){feedback.textContent='Tên lớp cần ít nhất 2 ký tự.';return}
+  const grade=prompt('Nhập khối lớp (ví dụ: 8, 9):','') ;if(grade===null)return;
+  try{await request('classes/rename',{id,name:name.trim(),grade:grade.trim()});feedback.textContent='Đã đổi tên lớp. Danh sách học sinh được giữ nguyên.';await loadClasses();await updateClassManager()}catch(err){feedback.textContent=err.message}
+ }else{
+  if(!confirm('Xóa lớp trống này? Không thể hoàn tác.'))return;
+  try{await request('classes/delete',{id});feedback.textContent='Đã xóa lớp trống.';await loadClasses();await updateClassManager()}catch(err){feedback.textContent=err.message}
+ }
+});
+// The existing app refreshes classList after create/import/move; synchronize the new panel.
+let classRefreshQueued=false;
+const classListObs=new MutationObserver(()=>{
+ if(classRefreshQueued)return;classRefreshQueued=true;
+ queueMicrotask(async()=>{classRefreshQueued=false;await updateClassManager()});
+});
+classListObs.observe(get('classList'),{childList:true});
+updateClassManager();
 })();

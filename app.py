@@ -436,6 +436,19 @@ class H(BaseHTTPRequestHandler):
     if found!=len(set(a[0] for a in parsed)) or found!=len(parsed):return self.err(400,'Có mã học sinh không hợp lệ hoặc trùng.')
     c.executemany('INSERT INTO attendance(student_id,day,status,note) VALUES(?,?,?,?) ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note',parsed)
    return self.sendj(200,{'saved':len(parsed),'day':day})
+  if p=='/api/classes/rename':
+   try:cid=int(d.get('id',0))
+   except:return self.err(400,'Mã lớp không hợp lệ.')
+   name=str(d.get('name','')).strip()[:100]
+   grade=str(d.get('grade','')).strip()[:25]
+   if cid<=0 or len(name)<2:return self.err(400,'Tên lớp phải có ít nhất 2 ký tự.')
+   try:
+    with db() as c:
+     row=c.execute('SELECT id FROM classes WHERE id=?',(cid,)).fetchone()
+     if not row:return self.err(404,'Không tìm thấy lớp để sửa.')
+     c.execute('UPDATE classes SET name=?,grade=? WHERE id=?',(name,grade,cid))
+    return self.sendj(200,{'ok':True,'id':cid,'name':name,'grade':grade})
+   except sqlite3.IntegrityError:return self.err(409,'Tên lớp đã tồn tại, hãy chọn tên khác.')
   if p=='/api/classes/delete':
    try:cid=int(d.get('id'))
    except:return self.err(400,'Mã lớp không hợp lệ.')
