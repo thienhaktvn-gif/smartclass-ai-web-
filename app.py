@@ -1,9 +1,10 @@
-import os, json, sqlite3, secrets, hashlib, hmac, random, re, urllib.request, urllib.error, base64, uuid
+import os, json, sqlite3, secrets, hashlib, hmac, random, re, urllib.request, urllib.error, base64, uuid, io
 from pathlib import Path
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from http.cookies import SimpleCookie
 from datetime import datetime, timezone
+from openpyxl import Workbook, load_workbook
 
 ROOT=Path(__file__).parent
 DB=Path(os.environ.get('SMARTCLASS_DB',str(ROOT/'smartclass.db')))
@@ -31,6 +32,8 @@ def init():
   CREATE TABLE IF NOT EXISTS exam_questions(exam_id INTEGER REFERENCES exams(id) ON DELETE CASCADE,question_id INTEGER REFERENCES questions(id),ord INTEGER NOT NULL,PRIMARY KEY(exam_id,question_id));
   CREATE TABLE IF NOT EXISTS attempts(id INTEGER PRIMARY KEY,exam_id INTEGER NOT NULL REFERENCES exams(id),student_name TEXT NOT NULL,access_code_hash TEXT NOT NULL,form_seed INTEGER NOT NULL,score REAL NOT NULL,correct INTEGER NOT NULL,total INTEGER NOT NULL,answers TEXT NOT NULL,feedback TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE INDEX IF NOT EXISTS attempts_exam_idx ON attempts(exam_id);
+   CREATE TABLE IF NOT EXISTS attendance(id INTEGER PRIMARY KEY,student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,day TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('present','absent','late','excused')),note TEXT DEFAULT '',UNIQUE(student_id,day));
+   CREATE TABLE IF NOT EXISTS demo_meta(k TEXT PRIMARY KEY,v TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS games(id INTEGER PRIMARY KEY,title TEXT NOT NULL,topic TEXT NOT NULL,kind TEXT NOT NULL,question_ids TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS lesson_media(id INTEGER PRIMARY KEY,title TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,filename TEXT DEFAULT '',created TEXT DEFAULT CURRENT_TIMESTAMP);''')
   row=c.execute('SELECT id FROM users WHERE username=?',(ADMIN_USER,)).fetchone()
@@ -93,7 +96,7 @@ class H(BaseHTTPRequestHandler):
  def body(self):
   try:
    n=int(self.headers.get('Content-Length','0'))
-   if n>70000 or n<1:raise ValueError()
+   if n>2500000 or n<1:raise ValueError()
    v=json.loads(self.rfile.read(n));return v if isinstance(v,dict) else None
   except:return None
  def session(self):
@@ -148,10 +151,41 @@ class H(BaseHTTPRequestHandler):
    target=MEDIA/name
    if not target.is_file():return self.err(404,'Không tìm thấy hình ảnh.')
    b=target.read_bytes();self.send_response(200);self.send_header('Content-Type',{'png':'image/png','jpg':'image/jpeg','webp':'image/webp'}[name.rsplit('.',1)[1]]);self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','private, no-store');self.end_headers();return self.wfile.write(b)
+  if p=='/api/students/export':
+   if not self.session():return self.err(401,'Vui lòng đăng nhập giáo viên.')
+   query=urlparse(self.path).query
+   from urllib.parse import parse_qs
+   try:cid=int(parse_qs(query).get('class_id',['0'])[0])
+   except:return self.err(400,'Mã lớp không hợp lệ.')
+   with db() as c:
+    cl=c.execute('SELECT name,grade FROM classes WHERE id=?',(cid,)).fetchone()
+    if not cl:return self.err(404,'Không tìm thấy lớp.')
+    rows=c.execute('SELECT code,name FROM students WHERE class_id=? ORDER BY code',(cid,)).fetchall()
+   wb=Workbook();ws=wb.active;ws.title='Danh sach hoc sinh';ws.append(['Mã học sinh','Họ và tên','Lớp'])
+   for r in rows:ws.append([r['code'],r['name'],cl['name']])
+   ws.column_dimensions['A'].width=22;ws.column_dimensions['B'].width=35;ws.column_dimensions['C'].width=25
+   f=io.BytesIO();wb.save(f);data=f.getvalue();self.send_response(200)
+   self.send_header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+   self.send_header('Content-Disposition',f'attachment; filename="smartclass_lop_{cid}.xlsx"')
+   self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','no-store');self.end_headers();return self.wfile.write(data)
   if p.startswith('/api/'):
    s=self.session()
    if not s:return self.err(401,'Vui lòng đăng nhập giáo viên.')
    with db() as c:
+    if p=='/api/classes':
+     rows=c.execute('SELECT c.*,COUNT(s.id) student_count FROM classes c LEFT JOIN students s ON s.class_id=c.id GROUP BY c.id ORDER BY c.id DESC').fetchall()
+     return self.sendj(200,{'items':[dict(x) for x in rows]})
+    if p=='/api/students':
+     return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT s.*,c.name class_name FROM students s LEFT JOIN classes c ON c.id=s.class_id ORDER BY c.name,s.name')]})
+    if p=='/api/attendance':
+     from urllib.parse import parse_qs
+     q=parse_qs(urlparse(self.path).query)
+     day=q.get('day',[''])[0];cid=q.get('class_id',['0'])[0]
+     if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',day):return self.err(400,'Ngày không hợp lệ.')
+     try:cid=int(cid)
+     except:return self.err(400,'Lớp không hợp lệ.')
+     items=c.execute('SELECT s.id student_id,s.code,s.name,a.status,a.note FROM students s LEFT JOIN attendance a ON a.student_id=s.id AND a.day=? WHERE s.class_id=? ORDER BY s.name',(day,cid)).fetchall()
+     return self.sendj(200,{'items':[dict(x) for x in items], 'day':day})
     if p=='/api/games':return self.sendj(200,{'items':[safe_game(r) for r in c.execute('SELECT * FROM games ORDER BY id DESC LIMIT 100')]})
     if p=='/api/media':return self.sendj(200,{'items':[dict(r) for r in c.execute('SELECT * FROM lesson_media ORDER BY id DESC LIMIT 100')]})
     if p=='/api/overview':
@@ -217,6 +251,104 @@ class H(BaseHTTPRequestHandler):
    cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
    if 'scsession' in cookie:SESSIONS.pop(cookie['scsession'].value,None)
    return self.sendj(200,{'ok':True},{'Set-Cookie':'scsession=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/'})
+  if p=='/api/classes':
+   name=str(d.get('name','')).strip()[:100];grade=str(d.get('grade','')).strip()[:25]
+   if len(name)<2:return self.err(400,'Tên lớp cần ít nhất 2 ký tự.')
+   try:
+    with db() as c:cur=c.execute('INSERT INTO classes(name,grade) VALUES(?,?)',(name,grade));idx=cur.lastrowid
+    return self.sendj(201,{'id':idx})
+   except sqlite3.IntegrityError:return self.err(409,'Lớp đã tồn tại.')
+  if p=='/api/students':
+   name=str(d.get('name','')).strip()[:100];code=str(d.get('code','')).strip()[:40]
+   try:cid=int(d.get('class_id',0))
+   except:return self.err(400,'Chọn lớp hợp lệ.')
+   if len(name)<2 or not re.fullmatch(r'[A-Za-z0-9_.-]{2,40}',code):return self.err(400,'Tên hoặc mã học sinh không hợp lệ (mã chỉ dùng chữ, số, dấu -_.).')
+   try:
+    with db() as c:
+     if not c.execute('SELECT 1 FROM classes WHERE id=?',(cid,)).fetchone():return self.err(404,'Không tìm thấy lớp.')
+     cur=c.execute('INSERT INTO students(code,name,class_id) VALUES(?,?,?)',(code,name,cid));idx=cur.lastrowid
+    return self.sendj(201,{'id':idx})
+   except sqlite3.IntegrityError:return self.err(409,'Mã học sinh đã tồn tại.')
+  if p=='/api/students/delete':
+   try:sid=int(d.get('id'))
+   except:return self.err(400,'Mã học sinh không hợp lệ.')
+   with db() as c:
+    c.execute('DELETE FROM attendance WHERE student_id=?',(sid,));cur=c.execute('DELETE FROM students WHERE id=?',(sid,))
+   return self.sendj(200,{'deleted':cur.rowcount})
+  if p=='/api/attendance':
+   day=str(d.get('day',''));rows=d.get('items',[])
+   if not re.fullmatch(r'\d{4}-\d{2}-\d{2}',day) or not isinstance(rows,list) or len(rows)>150:return self.err(400,'Dữ liệu điểm danh không hợp lệ.')
+   try:datetime.strptime(day,'%Y-%m-%d')
+   except:return self.err(400,'Ngày không hợp lệ.')
+   allowed=('present','absent','late','excused')
+   parsed=[]
+   for r in rows:
+    try:sid=int(r['student_id']);status=str(r['status']);note=str(r.get('note',''))[:200]
+    except:return self.err(400,'Dữ liệu học sinh không hợp lệ.')
+    if status not in allowed:return self.err(400,'Trạng thái điểm danh không hợp lệ.')
+    parsed.append((sid,day,status,note))
+   with db() as c:
+    found=c.execute('SELECT COUNT(*) FROM students WHERE id IN ('+','.join('?' for _ in parsed)+')',[a[0] for a in parsed]).fetchone()[0] if parsed else 0
+    if found!=len(set(a[0] for a in parsed)) or found!=len(parsed):return self.err(400,'Có mã học sinh không hợp lệ hoặc trùng.')
+    c.executemany('INSERT INTO attendance(student_id,day,status,note) VALUES(?,?,?,?) ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note',parsed)
+   return self.sendj(200,{'saved':len(parsed),'day':day})
+  if p=='/api/students/import':
+   try:
+    cid=int(d.get('class_id'));raw=base64.b64decode(str(d.get('file','')),validate=True)
+    if len(raw)>1200000:return self.err(400,'Tệp Excel tối đa 1,2 MB.')
+    wb=load_workbook(io.BytesIO(raw),read_only=True,data_only=True)
+    ws=wb.active;entries=[]
+    for row in list(ws.iter_rows(min_row=2,max_col=2,values_only=True))[:300]:
+     code=str(row[0] or '').strip();name=str(row[1] or '').strip()
+     if not code and not name:continue
+     if not re.fullmatch(r'[A-Za-z0-9_.-]{2,40}',code) or not 2<=len(name)<=100:raise ValueError('Mã/họ tên không hợp lệ trong Excel.')
+     entries.append((code,name,cid))
+    wb.close()
+    if not entries:return self.err(400,'Không có học sinh hợp lệ trong Excel.')
+    if len(set(x[0] for x in entries))!=len(entries):return self.err(400,'Mã học sinh trùng trong Excel.')
+    with db() as c:
+     if not c.execute('SELECT 1 FROM classes WHERE id=?',(cid,)).fetchone():return self.err(404,'Không tìm thấy lớp.')
+     c.executemany('INSERT INTO students(code,name,class_id) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET name=excluded.name,class_id=excluded.class_id',entries)
+    return self.sendj(200,{'imported':len(entries)})
+   except (ValueError,KeyError,TypeError,base64.binascii.Error,sqlite3.Error,Exception) as e:return self.err(400,'Không đọc được Excel. Hãy dùng mẫu xuất từ SmartClassAI, tối đa 300 học sinh.')
+  if p=='/api/demo/seed':
+   with db() as c:
+    if c.execute("SELECT 1 FROM demo_meta WHERE k='seeded'").fetchone():return self.sendj(200,{'ok':True,'already':True})
+    classes=[('9A - Minh họa','9'),('8B - Minh họa','8')]
+    ids=[]
+    for name,grade in classes:
+     c.execute('INSERT OR IGNORE INTO classes(name,grade) VALUES(?,?)',(name,grade))
+     ids.append(c.execute('SELECT id FROM classes WHERE name=?',(name,)).fetchone()[0])
+    sample=[('DEMO901','Nguyễn Minh Anh',ids[0]),('DEMO902','Trần Hải Nam',ids[0]),('DEMO903','Lê Thu Hà',ids[0]),('DEMO904','Phạm Gia Bảo',ids[0]),('DEMO905','Võ Ngọc Linh',ids[0]),('DEMO801','Đỗ Minh Khang',ids[1]),('DEMO802','Hoàng Thảo Vy',ids[1]),('DEMO803','Bùi Đức An',ids[1])]
+    for code,name,cid in sample:c.execute('INSERT OR IGNORE INTO students(code,name,class_id) VALUES(?,?,?)',(code,name,cid))
+    day=datetime.now().strftime('%Y-%m-%d')
+    for i,(code,_,_) in enumerate(sample):
+     sid=c.execute('SELECT id FROM students WHERE code=?',(code,)).fetchone()[0]
+     c.execute('INSERT OR IGNORE INTO attendance(student_id,day,status) VALUES(?,?,?)',(sid,day,['present','present','late','present','absent','present','excused','present'][i]))
+    demo_q=[
+     ('Trong Python, lệnh nào kiểm tra điều kiện?','for','if','def','while','B','Câu lệnh if dùng kiểm tra điều kiện.'),
+     ('Hàm nào tạo dãy số nguyên trong Python?','range','input','print','len','A','range tạo dãy giá trị.'),
+     ('Chỉ số đầu tiên của list trong Python là gì?','1','-1','0','2','C','List đánh chỉ số từ 0.'),
+     ('Tìm kiếm nhị phân yêu cầu dữ liệu thế nào?','Ngẫu nhiên','Được sắp xếp','Chỉ số chẵn','Không trùng','B','Dữ liệu phải được sắp xếp.'),
+     ('Giá trị của 3 * 4 bằng bao nhiêu?','7','12','34','1','B','Phép nhân cho kết quả 12.'),
+     ('Kiểu dữ liệu đúng/sai trong Python là?','int','str','bool','list','C','bool nhận True hoặc False.'),
+     ('Vòng lặp nào duyệt lần lượt từng phần tử?','for','if','def','return','A','for dùng để lặp.'),
+     ('Độ phức tạp của duyệt tuần tự n phần tử là?','O(1)','O(n)','O(log n)','O(n²)','B','Mỗi phần tử được xét tối đa một lần.')]
+    ids=[]
+    for text,a,b,copt,dopt,answer,exp in demo_q:
+     row=c.execute('SELECT id FROM questions WHERE content=? AND origin=?',(text,'demo_contest')).fetchone()
+     if row:ids.append(row[0]);continue
+     cur=c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',('Tin học','9','Thuật toán - minh họa',text,a,b,copt,dopt,answer,'Nhận biết',exp,'demo_contest'))
+     ids.append(cur.lastrowid)
+    title='Đề luyện tập Tin học 9 [MINH HỌA]'
+    eidrow=c.execute('SELECT id FROM exams WHERE title=?',(title,)).fetchone()
+    if not eidrow:
+     eid=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,?)',(title,'Tin học','9',20,1)).lastrowid
+     c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,q,i) for i,q in enumerate(ids)])
+    if not c.execute('SELECT 1 FROM games WHERE title=?',('Thử thách thuật toán [MINH HỌA]',)).fetchone():
+     c.execute('INSERT INTO games(title,topic,kind,question_ids) VALUES(?,?,?,?)',('Thử thách thuật toán [MINH HỌA]','Tin học','quiz',json.dumps(ids[:6])))
+    c.execute("INSERT INTO demo_meta(k,v) VALUES('seeded','1')")
+   return self.sendj(200,{'ok':True,'classes':2,'students':8,'label':'DỮ LIỆU MINH HỌA'})
   if p=='/api/questions':
    required=['subject','grade','topic','content','a','b','c','d','answer']
    if any(not str(d.get(k,'')).strip() for k in required):return self.err(400,'Hãy điền đầy đủ câu hỏi và đáp án.')
