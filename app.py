@@ -17,7 +17,7 @@ SECRET=os.environ.get('SMARTCLASS_SECRET','')
 ADMIN_PASSWORD=os.environ.get('SMARTCLASS_ADMIN_PASSWORD','')
 ADMIN_USER=os.environ.get('SMARTCLASS_ADMIN_USER','giaovien')
 AI_KEY=os.environ.get('GEMINI_API_KEY','')
-AI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.8-flash')
+AI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.5-flash-lite')
 IMAGE_MODEL=os.environ.get('GEMINI_IMAGE_MODEL','gemini-nano-banana-2.1')
 VIDEO_MODEL=os.environ.get('GEMINI_VIDEO_MODEL','gemini-omni-1.1-flash')
 MEDIA=ROOT/'media';MEDIA.mkdir(exist_ok=True)
@@ -79,6 +79,7 @@ def gemini(parts,model=None,timeout=70,config=None):
  except urllib.error.HTTPError as e:
   if e.code in (401,403):raise RuntimeError('Gemini từ chối khóa API hoặc quyền model.')
   if e.code==429:raise RuntimeError('Gemini đã hết hạn mức hoặc bị giới hạn tốc độ.')
+  if e.code==503:raise RuntimeError('Gemini đang quá tải (HTTP 503). Hãy thử lại sau ít phút.')
   raise RuntimeError(f'Gemini trả lỗi HTTP {e.code}. Kiểm tra model và hạn mức.')
  except (urllib.error.URLError,TimeoutError):raise RuntimeError('Không kết nối được Gemini.')
 
@@ -317,6 +318,26 @@ class H(BaseHTTPRequestHandler):
    return self.sendj(200,{'exam':dict(e),'items':[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]})
   s=self.auth()
   if not s:return
+  if p=='/api/ai/chat':
+   if not AI_KEY:return self.err(503,'Chưa cấu hình Gemini API trên máy chủ.')
+   if not throttle('chat:'+s['username'],12,60):return self.err(429,'Bạn đã gửi nhiều tin nhắn. Vui lòng thử lại sau một phút.')
+   prompt=str(d.get('message','')).strip()[:1800]
+   if not prompt:return self.err(400,'Hãy nhập nội dung muốn hỏi.')
+   raw_history=d.get('history',[])
+   if not isinstance(raw_history,list):return self.err(400,'Lịch sử hội thoại không hợp lệ.')
+   history=[]
+   for turn in raw_history[-8:]:
+    if isinstance(turn,dict) and turn.get('role') in ('user','assistant') and isinstance(turn.get('text'),str):
+     history.append((turn['role'],turn['text'][:900]))
+   context='\n'.join(('Giáo viên: ' if role=='user' else 'Trợ lý: ')+text for role,text in history)
+   instruction=('Bạn là trợ lý giáo dục SmartClass AI, trả lời bằng tiếng Việt rõ ràng, lịch sự; hỗ trợ giáo viên các môn học, gợi ý bài dạy theo CV5512, xây dựng câu hỏi và hướng dẫn sử dụng ứng dụng. Nếu chưa chắc chắn hãy nói rõ. Không yêu cầu hoặc tiết lộ API Key, mật khẩu hay thông tin riêng của học sinh. Không tự nhận kết quả AI đã được kiểm chứng.\n'+context+'\nGiáo viên: '+prompt+'\nTrợ lý:')
+   try:
+    result=gemini([{'text':instruction}],timeout=65)
+    answer=''.join(part.get('text','') for cand in result.get('candidates',[]) for part in cand.get('content',{}).get('parts',[]) if isinstance(part,dict)).strip()
+    if not answer:return self.err(502,'Gemini chưa trả nội dung. Hãy thử lại.')
+    return self.sendj(200,{'reply':answer[:8500],'model':AI_MODEL})
+   except (RuntimeError,ValueError,KeyError,TypeError) as exc:
+    return self.err(502,str(exc) if isinstance(exc,RuntimeError) else 'Phản hồi Gemini chưa hợp lệ.')
   if p=='/api/logout':
    cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
    if 'scsession' in cookie:SESSIONS.pop(cookie['scsession'].value,None)
