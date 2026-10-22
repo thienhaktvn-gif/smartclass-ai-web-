@@ -139,7 +139,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':False,'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/showcase-demo.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -395,6 +395,30 @@ class H(BaseHTTPRequestHandler):
      eid=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,0)',(title,subject,'8',15)).lastrowid
      c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,q,i) for i,q in enumerate(qids)])
    return self.sendj(200,{'ok':True,'added':made,'subjects':len(SUBJECT_CATALOG),'notice':'DỮ LIỆU MINH HỌA: Giáo viên phải rà soát đáp án và sửa theo chương trình từng lớp. Đề mẫu mặc định chưa công bố.'})
+  if p=='/api/demo/showcase':
+   # Teacher-authenticated, reversible-by-selecting-demo-data fixture. No fabricated student outcomes.
+   added={'games':0,'media':0,'attendance':0,'draft_exams':0}
+   with db() as c:
+    subjects=[r[0] for r in c.execute("SELECT DISTINCT subject FROM questions WHERE origin='demo-multisubject' ORDER BY subject")]
+    for subject in subjects:
+     ids=[r[0] for r in c.execute("SELECT id FROM questions WHERE subject=? AND origin='demo-multisubject' ORDER BY id LIMIT 10",(subject,))]
+     if not ids:continue
+     for kind,label in [('quiz','Trắc nghiệm'),('flash','Lật thẻ'),('speed','Đua tốc độ'),('mystery','Ô cửa bí mật'),('ladder','Leo thang')]:
+      name=f'{label} · {subject} [MINH HỌA]'
+      if not c.execute('SELECT id FROM games WHERE title=?',(name,)).fetchone():
+       c.execute('INSERT INTO games(title,topic,kind,question_ids) VALUES(?,?,?,?)',(name,subject,kind,json.dumps(ids)))
+       added['games']+=1
+    lesson_title='Kế hoạch bài dạy mẫu · Toán 8 [MINH HỌA]'
+    planner={ 'school':'TRƯỜNG THCS MINH HỌA', 'teacher':'GIÁO VIÊN MINH HỌA', 'subject':'Toán', 'grade':'8', 'periods':'1', 'title':'Hằng đẳng thức đáng nhớ (dữ liệu minh họa)', 'knowledge':'Nhận biết và vận dụng công thức bình phương một tổng.', 'skills':'Tư duy và lập luận toán học; giải quyết vấn đề.', 'qualities':'Chăm chỉ, trung thực trong trình bày lời giải.', 'digital':'Khai thác thông tin và dữ liệu; sáng tạo nội dung số', 'digital_evidence':'Sử dụng bảng tính hoặc công cụ trực tuyến để kiểm tra các ví dụ.', 'resources':'Máy chiếu; phiếu học tập; công cụ số phù hợp.', 'warmup':'Nêu tình huống tính nhanh (a+b)²; học sinh dự đoán kết quả.', 'explore':'Hướng dẫn hình thành công thức và giải thích bằng mô hình diện tích.', 'practice':'Học sinh thực hiện 3 bài tập có mức độ tăng dần, đối chiếu và sửa lỗi.', 'apply':'Vận dụng công thức giải một bài toán thực tiễn; ghi nhận sản phẩm.' }
+    if not c.execute('SELECT id FROM lesson_media WHERE title=?',(lesson_title,)).fetchone():
+     c.execute('INSERT INTO lesson_media(title,kind,content) VALUES(?,?,?)',(lesson_title,'planner-sample',json.dumps(planner,ensure_ascii=False)))
+     added['media']+=1
+    storyboard_title='Kịch bản học liệu · An toàn số [MINH HỌA]'
+    storyboard={'title':storyboard_title,'note':'Dữ liệu minh họa, không phải video tạo thật','scenes':[{'scene':1,'visual':'Học sinh thảo luận về mật khẩu mạnh','narration':'Không dùng chung mật khẩu.'},{'scene':2,'visual':'Minh họa xác thực hai yếu tố','narration':'Hãy bật xác thực bổ sung khi có thể.'}]}
+    if not c.execute('SELECT id FROM lesson_media WHERE title=?',(storyboard_title,)).fetchone():
+     c.execute('INSERT INTO lesson_media(title,kind,content) VALUES(?,?,?)',(storyboard_title,'storyboard',json.dumps(storyboard,ensure_ascii=False)))
+     added['media']+=1
+   return self.sendj(200,{'ok':True,'added':added,'subjects':len(subjects),'notice':'CHỈ LÀ DỮ LIỆU MINH HỌA: Không tạo bài làm, điểm số hay sản phẩm AI giả. Game cần câu hỏi mẫu đa môn đã được tạo trước.'})
   if p=='/api/demo/seed':
    with db() as c:
     if c.execute("SELECT 1 FROM demo_meta WHERE k='seeded'").fetchone():return self.sendj(200,{'ok':True,'already':True})
