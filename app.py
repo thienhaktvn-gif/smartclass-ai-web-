@@ -4,6 +4,8 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 from http.cookies import SimpleCookie
 from datetime import datetime, timezone
+from contextvars import ContextVar
+import time, threading
 from openpyxl import Workbook, load_workbook
 
 SUBJECT_CATALOG=['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lí', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lí', 'Giáo dục công dân', 'Tin học', 'Công nghệ', 'Khoa học tự nhiên', 'Âm nhạc', 'Mĩ thuật', 'Giáo dục thể chất', 'Hoạt động trải nghiệm']
@@ -20,9 +22,26 @@ IMAGE_MODEL=os.environ.get('GEMINI_IMAGE_MODEL','gemini-2.5-flash-image')
 MEDIA=ROOT/'media';MEDIA.mkdir(exist_ok=True)
 PUBLIC_URL=os.environ.get('PUBLIC_URL','')
 SESSIONS={}
+TENANT=ContextVar('smartclass_tenant', default=None)
+TENANT_DIR=DB.parent/'smartclass_teachers'
+TENANT_DIR.mkdir(parents=True,exist_ok=True)
+RATE={}
+RATE_LOCK=threading.Lock()
+def throttle(key,limit,window):
+ now=time.monotonic()
+ with RATE_LOCK:
+  a=[t for t in RATE.get(key,[]) if now-t<window]
+  if len(a)>=limit:return False
+  a.append(now);RATE[key]=a
+  return True
+
+def tenant_for(name):
+ if not name or name==ADMIN_USER:return None
+ return TENANT_DIR/(hashlib.sha256(name.encode('utf8')).hexdigest()+'.sqlite3')
+
 
 def db():
- c=sqlite3.connect(DB,timeout=15); c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');return c
+ c=sqlite3.connect(TENANT.get() or DB,timeout=15); c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');return c
 
 def init():
  with db() as c:
@@ -39,10 +58,10 @@ def init():
   CREATE TABLE IF NOT EXISTS games(id INTEGER PRIMARY KEY,title TEXT NOT NULL,topic TEXT NOT NULL,kind TEXT NOT NULL,question_ids TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS lesson_media(id INTEGER PRIMARY KEY,title TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,filename TEXT DEFAULT '',created TEXT DEFAULT CURRENT_TIMESTAMP);''')
   row=c.execute('SELECT id FROM users WHERE username=?',(ADMIN_USER,)).fetchone()
-  if not row and ADMIN_PASSWORD:
+  if TENANT.get() is None and not row and ADMIN_PASSWORD:
    salt=secrets.token_hex(16);v=hashlib.pbkdf2_hmac('sha256',ADMIN_PASSWORD.encode(),bytes.fromhex(salt),240000).hex()
    c.execute('INSERT INTO users(username,password_hash,role) VALUES(?,?,?)',(ADMIN_USER,salt+':'+v,'teacher'))
-  if c.execute('SELECT COUNT(*) FROM questions').fetchone()[0]==0 and os.getenv('SMARTCLASS_DEMO','0')=='1':
+  if TENANT.get() is None and c.execute('SELECT COUNT(*) FROM questions').fetchone()[0]==0 and os.getenv('SMARTCLASS_DEMO','0')=='1':
    rows=[('Tin học','9','Cấu trúc rẽ nhánh','Trong Python, từ khóa nào bắt đầu câu lệnh điều kiện?','for','if','def','while','B','Nhận biết','if được dùng để kiểm tra điều kiện.'),('Tin học','9','Vòng lặp','Hàm nào tạo dãy số nguyên trong Python?','range','print','input','str','A','Nhận biết','range tạo các giá trị cho vòng lặp.'),('Tin học','9','Kiểu dữ liệu','Kiểu dữ liệu nào biểu diễn Đúng/Sai?','str','list','bool','int','C','Nhận biết','bool có hai giá trị True và False.'),('Tin học','9','Thuật toán','Tìm kiếm nhị phân yêu cầu điều gì?','Mảng đảo ngược','Dữ liệu được sắp xếp','Tất cả phần tử trùng nhau','Chỉ số chẵn','B','Thông hiểu','Tìm kiếm nhị phân cần dãy đã sắp xếp.'),('Tin học','9','Mảng','Chỉ số đầu tiên của list Python là bao nhiêu?','1','-1','0','2','C','Nhận biết','List được đánh chỉ số từ 0.'),('Tin học','9','Độ phức tạp','Thuật toán duyệt lần lượt n phần tử có thời gian O(?)','1','log n','n','n²','C','Thông hiểu','Duyệt n phần tử tuyến tính là O(n).')]
    for r in rows:c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(*r,'demo'))
 
@@ -113,12 +132,14 @@ class H(BaseHTTPRequestHandler):
   if not u or self.headers.get('X-CSRF-Token','')!=u['csrf']:self.err(401,'Cần đăng nhập hợp lệ.');return None
   return u
  def do_GET(self):
+  ss=self.session(); TENANT.set(tenant_for(ss['username']) if ss else None)
   p=urlparse(self.path).path
+  if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1'})
   if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':False,'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -200,10 +221,27 @@ class H(BaseHTTPRequestHandler):
    return self.err(404,'Không tồn tại API.')
   return self.err(404,'Không tìm thấy trang.')
  def do_POST(self):
+  ss=self.session(); TENANT.set(tenant_for(ss['username']) if ss else None)
   p=urlparse(self.path).path;d=self.body()
   if d is None:return self.err(400,'Dữ liệu JSON không hợp lệ hoặc quá lớn.')
+  if p=='/api/register':
+   if os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')!='1':return self.err(403,'Đăng ký hiện tạm khóa. Quản trị cần bật SMARTCLASS_ALLOW_REGISTRATION=1 sau khi cấu hình nơi lưu dữ liệu bền vững.')
+   address=self.client_address[0]
+   if not throttle('register:'+address,5,3600):return self.err(429,'Bạn đã tạo quá nhiều yêu cầu đăng ký.')
+   name=str(d.get('username','')).strip().lower(); pw=str(d.get('password',''))
+   if not re.fullmatch(r'[a-z][a-z0-9_.-]{4,31}',name):return self.err(400,'Tên đăng nhập gồm 5–32 ký tự không dấu, bắt đầu bằng chữ cái.')
+   if name==ADMIN_USER:return self.err(409,'Tên đăng nhập không khả dụng.')
+   if len(pw)<12 or len(pw)>128 or not re.search('[A-Z]',pw) or not re.search('[a-z]',pw) or not re.search('[0-9]',pw):return self.err(400,'Mật khẩu cần 12–128 ký tự, gồm chữ hoa, chữ thường và chữ số.')
+   TENANT.set(None)
+   with db() as c:
+    if c.execute('SELECT 1 FROM users WHERE username=?',(name,)).fetchone():return self.err(409,'Tên đăng nhập đã được sử dụng.')
+    c.execute('INSERT INTO users(username,password_hash,role) VALUES(?,?,?)',(name,hashpw(pw),'teacher'))
+   TENANT.set(tenant_for(name));init();TENANT.set(None)
+   return self.sendj(201,{'ok':True,'message':'Tạo tài khoản thành công. Mời đăng nhập.'})
   if p=='/api/login':
-   name=str(d.get('username',''))[:100];pw=str(d.get('password',''))
+   if not throttle('login:'+self.client_address[0],15,900):return self.err(429,'Có quá nhiều lần thử đăng nhập. Vui lòng thử lại sau.')
+   name=str(d.get('username','')).strip().lower()[:100];pw=str(d.get('password',''))
+   TENANT.set(None)
    with db() as c:u=c.execute('SELECT * FROM users WHERE username=?',(name,)).fetchone()
    if not u or not checkpw(pw,u['password_hash']):return self.err(401,'Sai tài khoản hoặc mật khẩu.')
    tok=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(24);SESSIONS[tok]={'username':name,'csrf':csrf,'created':datetime.now(timezone.utc).timestamp()}
