@@ -524,8 +524,13 @@ class H(BaseHTTPRequestHandler):
    if not 1<=n<=10:return self.err(400,'Chỉ tạo 1–10 câu mỗi lần.')
    try:
     data=gemini_text('Tạo '+str(n)+' câu hỏi trắc nghiệm tiếng Việt cho giáo viên, môn '+subject+', lớp '+grade+', chủ đề '+topic+'. Đảm bảo đáp án và giải thích chính xác. Chỉ trả JSON object với questions là danh sách câu hỏi có content,a,b,c,d,answer (A/B/C/D),difficulty,explanation. Không chứa tên học sinh.')
-    found=data.get('questions',[]);out=[]
-    if not isinstance(found,list):raise ValueError()
+    # Gemini sometimes returns a top-level JSON array instead of {"questions": [...]}.
+    # Validate before accessing object methods to avoid aborting the HTTP connection.
+    if isinstance(data,list):found=data
+    elif isinstance(data,dict):found=data.get('questions',[])
+    else:raise ValueError('Cấu trúc phản hồi Gemini không hợp lệ.')
+    out=[]
+    if not isinstance(found,list):raise ValueError('Danh sách câu hỏi Gemini không hợp lệ.')
     for x in found[:n]:
      if not isinstance(x,dict) or not all(str(x.get(k,'')).strip() for k in ('content','a','b','c','d','answer')) or str(x['answer']).upper() not in ('A','B','C','D'):continue
      out.append({k:str(x.get(k,''))[:2000] for k in ('content','a','b','c','d','answer','difficulty','explanation')})
