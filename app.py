@@ -169,7 +169,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/planner-ai.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -342,6 +342,34 @@ class H(BaseHTTPRequestHandler):
    cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
    if 'scsession' in cookie:SESSIONS.pop(cookie['scsession'].value,None)
    return self.sendj(200,{'ok':True},{'Set-Cookie':'scsession=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/'})
+  if p=='/api/planner/ai-draft':
+   # Teacher-only; the do_POST authentication/CSRF guard runs before this block.
+   if not AI_KEY:return self.err(503,'Chưa cấu hình GEMINI_API_KEY. Bạn vẫn có thể soạn thủ công và xuất Word.')
+   if not throttle('planner-ai:'+s['username'],4,60):return self.err(429,'Đã gửi quá nhiều yêu cầu soạn giáo án; thử lại sau một phút.')
+   keys=('subject','grade','title','periods','knowledge','skills','qualities','digital','digital_evidence','resources','warmup','explore','practice','apply')
+   values={k:str(d.get(k,'')).strip()[:1100] for k in keys}
+   if len(values['title'])<4 or not values['subject'] or not values['grade']:return self.err(400,'Nhập môn học, lớp và tên bài dạy trước khi nhờ AI soạn.')
+   try:
+    periods=int(values['periods'] or '1')
+    if not 1<=periods<=20:raise ValueError()
+   except:return self.err(400,'Thời lượng bài dạy cần từ 1 đến 20 tiết.')
+   instruction=('Bạn là trợ lý soạn KẾ HOẠCH BÀI DẠY theo PHỤ LỤC IV Công văn 5512/BGDĐT-GDTrH. '
+     'Soạn dự thảo bằng tiếng Việt, không tự tuyên bố đạt chuẩn; chỉ dùng yêu cầu cần đạt được giáo viên cung cấp, nếu chưa có thì nêu cần đối chiếu CTGDPT và SGK. '
+     'Phát triển năng lực số tham khảo Thông tư 02/2025/TT-BGDĐT, phải chọn minh chứng khả thi, KHÔNG ép sử dụng thiết bị cho tất cả học sinh. '
+     'Mỗi hoạt động cần có bốn thành phần ghi rõ: Mục tiêu; Nội dung; Sản phẩm học tập; Tổ chức thực hiện (giao nhiệm vụ, thực hiện, báo cáo/thảo luận, kết luận/đánh giá). '
+     'Chú ý đánh giá quá trình và phân hóa nhiệm vụ; kiến thức phải đúng môn và lớp. Không đưa thông tin học sinh thật. '
+     'Chỉ trả JSON object chứa ĐỦ các khóa knowledge,skills,qualities,digital_evidence,resources,warmup,explore,practice,apply. '
+     'Mỗi giá trị là chuỗi dễ đọc, tuyệt đối không Markdown fenced code. '
+     'Dữ liệu giáo viên nhập: '+json.dumps(values,ensure_ascii=False))
+   try:
+    result=gemini_text(instruction)
+    if not isinstance(result,dict):raise ValueError('Gemini không trả một đối tượng giáo án.')
+    required=('knowledge','skills','qualities','digital_evidence','resources','warmup','explore','practice','apply')
+    fields={k:str(result.get(k,'')).strip()[:6500] for k in required}
+    if any(len(fields[k])<18 for k in required):raise ValueError('Gemini trả thiếu nội dung của kế hoạch; hãy thử lại.')
+    return self.sendj(200,{'draft':fields,'note':'Bản nháp AI. Giáo viên cần đối chiếu yêu cầu cần đạt, điều kiện lớp học và rà soát trước khi xuất Word.'})
+   except (RuntimeError,ValueError,KeyError,TypeError) as exc:
+    return self.err(502,str(exc)[:400] if isinstance(exc,(RuntimeError,ValueError)) else 'Phản hồi Gemini không hợp lệ.')
   if p=='/api/planner/docx':
    from docx import Document
    from docx.shared import Cm, Pt
