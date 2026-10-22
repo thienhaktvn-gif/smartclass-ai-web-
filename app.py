@@ -113,9 +113,9 @@ class H(BaseHTTPRequestHandler):
  def do_GET(self):
   p=urlparse(self.path).path
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':False,'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
-  if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student'):
+  if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -347,6 +347,8 @@ class H(BaseHTTPRequestHandler):
      c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,q,i) for i,q in enumerate(ids)])
     if not c.execute('SELECT 1 FROM games WHERE title=?',('Thử thách thuật toán [MINH HỌA]',)).fetchone():
      c.execute('INSERT INTO games(title,topic,kind,question_ids) VALUES(?,?,?,?)',('Thử thách thuật toán [MINH HỌA]','Tin học','quiz',json.dumps(ids[:6])))
+    for title,kind in [('Lật thẻ tri thức [MINH HỌA]','flash'),('Đua tốc độ Python [MINH HỌA]','speed'),('Ô cửa bí mật [MINH HỌA]','mystery'),('Leo thang kiến thức [MINH HỌA]','ladder')]:
+     c.execute('INSERT INTO games(title,topic,kind,question_ids) VALUES(?,?,?,?)',(title,'Tin học',kind,json.dumps(ids[:6])))
     c.execute("INSERT INTO demo_meta(k,v) VALUES('seeded','1')")
    return self.sendj(200,{'ok':True,'classes':2,'students':8,'label':'DỮ LIỆU MINH HỌA'})
   if p=='/api/questions':
@@ -374,7 +376,7 @@ class H(BaseHTTPRequestHandler):
    title=str(d.get('title','')).strip()[:130];topic=str(d.get('topic','')).strip()[:130];kind=str(d.get('kind','quiz'))
    try:ids=list(dict.fromkeys(int(x) for x in d.get('question_ids',[])))
    except:return self.err(400,'Danh sách câu hỏi không hợp lệ.')
-   if not title or not topic or kind not in ('quiz','truefalse') or not 1<=len(ids)<=30:return self.err(400,'Cần tên, chủ đề và 1–30 câu hỏi.')
+   if not title or not topic or kind not in ('quiz','flash','speed','mystery','ladder') or not 1<=len(ids)<=30:return self.err(400,'Cần tên, chủ đề và 1–30 câu hỏi.')
    with db() as c:
     found=c.execute('SELECT COUNT(*) FROM questions WHERE id IN ('+','.join('?' for _ in ids)+')',ids).fetchone()[0]
     if found!=len(ids):return self.err(400,'Câu hỏi không tồn tại.')
