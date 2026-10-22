@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: smartclass-ai-web
+    runtime: python
+    plan: free
+    buildCommand: python -m py_compile app.py
+    startCommand: python app.py
+    envVars:
+      - key: SMARTCLASS_SECRET
+        generateValue: true
+      - key: SMARTCLASS_ADMIN_PASSWORD
+        sync: false
+      - key: SMARTCLASS_ADMIN_USER
+        value: giaovien
+      - key: PUBLIC_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GEMINI_IMAGE_MODEL
+        value: gemini-2.5-flash-image
+      - key: SMARTCLASS_DEMO
+        value: "0"
