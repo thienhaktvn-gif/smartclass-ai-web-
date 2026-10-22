@@ -169,7 +169,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -565,6 +565,38 @@ class H(BaseHTTPRequestHandler):
     with db() as c:cur=c.execute('INSERT INTO lesson_media(title,kind,content,filename) VALUES(?,?,?,?)',(prompt[:130],media_type,prompt,filename))
     return self.sendj(200,{'id':cur.lastrowid,'url':'/media/'+filename,'kind':media_type,'note':'Nội dung AI tạo thực tế; tệp trên Render Free có thể mất khi khởi động lại.'})
    except (RuntimeError,ValueError,KeyError,TypeError) as e:return self.err(502,str(e) if isinstance(e,RuntimeError) else 'Gemini trả tệp không hợp lệ.')
+  if p=='/api/bank16/seed':
+   from bank16 import FACTS,build_exam
+   created={'subjects':0,'questions':0,'draft_exams':0,'essays':0}
+   with db() as c:
+    c.execute('CREATE TABLE IF NOT EXISTS essay_questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,exam_id INTEGER,content TEXT NOT NULL,origin TEXT NOT NULL)')
+    for subject in FACTS:
+     qs,essays=build_exam(subject)
+     title='Đề ôn tập '+subject+' lớp 8 – 16 TN + 3 TL [MINH HỌA]'
+     row=c.execute('SELECT id FROM exams WHERE title=?',(title,)).fetchone()
+     if row:continue
+     ids=[]
+     for q in qs:
+      ids.append(c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',tuple(q[k] for k in ('subject','grade','topic','content','a','b','c','d','answer','difficulty','explanation','origin'))).lastrowid)
+     eid=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,0)',(title,subject,'8',45)).lastrowid
+     c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,qid,i) for i,qid in enumerate(ids)])
+     c.executemany('INSERT INTO essay_questions(subject,grade,exam_id,content,origin) VALUES(?,?,?,?,?)',[(subject,'8',eid,e,'demo-16x19') for e in essays])
+     created['subjects']+=1;created['questions']+=16;created['draft_exams']+=1;created['essays']+=3
+   return self.sendj(200,{'created':created,'note':'DỮ LIỆU MINH HỌA: đề nháp, tự luận cần giáo viên chấm; không tự công bố.'})
+  if p=='/api/bank16/essays':
+   with db() as c:
+    c.execute('CREATE TABLE IF NOT EXISTS essay_questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,exam_id INTEGER,content TEXT NOT NULL,origin TEXT NOT NULL)')
+    items=[dict(r) for r in c.execute('SELECT id,subject,grade,exam_id,content FROM essay_questions ORDER BY subject,id LIMIT 200')]
+   return self.sendj(200,{'items':items})
+  if p=='/api/bank16/ai-essays':
+   subject=str(d.get('subject','Toán'))[:70];topic=str(d.get('topic','Kiến thức cơ bản'))[:130];grade=str(d.get('grade','8'))[:12]
+   try:
+    data=gemini_text('Tạo đúng 3 câu hỏi TỰ LUẬN tiếng Việt cho môn '+subject+', lớp '+grade+', chủ đề '+topic+'. Chỉ trả JSON object {"essays":[{"question":"...","suggested_answer":"..."}]}. Câu hỏi cần phù hợp học sinh; không có dữ liệu cá nhân.')
+    if not isinstance(data,dict) or not isinstance(data.get('essays'),list):raise ValueError()
+    items=[{'question':str(q['question'])[:1200],'suggested_answer':str(q.get('suggested_answer',''))[:2000]} for q in data['essays'][:3] if isinstance(q,dict) and str(q.get('question','')).strip()]
+    if not items:return self.err(502,'Gemini không trả câu tự luận hợp lệ.')
+    return self.sendj(200,{'items':items,'note':'Bản nháp AI, cần giáo viên thẩm định; không tự chấm.'})
+   except (RuntimeError,ValueError,KeyError,TypeError) as e:return self.err(502,str(e) if isinstance(e,RuntimeError) else 'Gemini trả dữ liệu tự luận không hợp lệ.')
   if p=='/api/ai/generate':
    if not AI_KEY:return self.err(503,'AI chưa cấu hình. Chức năng ngân hàng đề thủ công và chấm trắc nghiệm vẫn hoạt động.')
    subject=str(d.get('subject','Tin học'))[:70];grade=str(d.get('grade','9'))[:20];topic=str(d.get('topic','Thuật toán'))[:130]

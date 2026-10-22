@@ -1,0 +1,1058 @@
+{
+  "Toán": [
+    [
+      "Số nguyên tố",
+      "Số tự nhiên lớn hơn 1 chỉ có hai ước dương"
+    ],
+    [
+      "Hợp số",
+      "Số tự nhiên lớn hơn 1 có hơn hai ước dương"
+    ],
+    [
+      "Phân số",
+      "Biểu thức a/b với b khác 0"
+    ],
+    [
+      "Tỉ số",
+      "Thương so sánh hai đại lượng cùng đơn vị"
+    ],
+    [
+      "Tỉ lệ thức",
+      "Đẳng thức giữa hai tỉ số"
+    ],
+    [
+      "Biến số",
+      "Đại lượng có thể nhận nhiều giá trị"
+    ],
+    [
+      "Hàm số",
+      "Quy tắc gán mỗi giá trị đầu vào đúng một giá trị đầu ra"
+    ],
+    [
+      "Phương trình",
+      "Đẳng thức chứa ẩn cần tìm"
+    ],
+    [
+      "Bất phương trình",
+      "Mệnh đề so sánh có chứa ẩn"
+    ],
+    [
+      "Số đối",
+      "Hai số có tổng bằng 0"
+    ],
+    [
+      "Giá trị tuyệt đối",
+      "Khoảng cách từ một số đến 0 trên trục số"
+    ],
+    [
+      "Chu vi",
+      "Tổng độ dài các cạnh của hình"
+    ],
+    [
+      "Diện tích",
+      "Độ đo phần mặt phẳng mà hình chiếm"
+    ],
+    [
+      "Trung bình cộng",
+      "Tổng các giá trị chia cho số lượng giá trị"
+    ],
+    [
+      "Trung vị",
+      "Giá trị ở giữa dãy đã sắp thứ tự"
+    ],
+    [
+      "Xác suất",
+      "Độ đo khả năng xuất hiện của biến cố"
+    ]
+  ],
+  "Ngữ văn": [
+    [
+      "Nhân vật",
+      "Đối tượng được xây dựng trong tác phẩm tự sự hoặc kịch"
+    ],
+    [
+      "Cốt truyện",
+      "Hệ thống sự kiện tạo nên diễn biến câu chuyện"
+    ],
+    [
+      "Ngôi kể thứ nhất",
+      "Lối kể dùng người kể xưng tôi"
+    ],
+    [
+      "Ngôi kể thứ ba",
+      "Lối kể người kể thường không xưng tôi"
+    ],
+    [
+      "So sánh",
+      "Đối chiếu hai sự vật có nét tương đồng"
+    ],
+    [
+      "Nhân hóa",
+      "Gán đặc điểm hoặc hành động con người cho sự vật"
+    ],
+    [
+      "Ẩn dụ",
+      "Gọi tên sự vật này bằng tên sự vật khác dựa trên tương đồng"
+    ],
+    [
+      "Hoán dụ",
+      "Gọi tên sự vật bằng tên khác dựa trên quan hệ gần gũi"
+    ],
+    [
+      "Điệp ngữ",
+      "Lặp lại từ ngữ để nhấn mạnh"
+    ],
+    [
+      "Từ láy",
+      "Từ có các tiếng liên hệ với nhau về âm"
+    ],
+    [
+      "Từ ghép",
+      "Từ phức tạo từ các tiếng có quan hệ về nghĩa"
+    ],
+    [
+      "Chủ ngữ",
+      "Thành phần thường nêu đối tượng được nói đến"
+    ],
+    [
+      "Vị ngữ",
+      "Thành phần thường nêu đặc điểm hoặc hoạt động của chủ ngữ"
+    ],
+    [
+      "Luận điểm",
+      "Ý kiến chính cần được làm sáng tỏ trong lập luận"
+    ],
+    [
+      "Dẫn chứng",
+      "Sự việc hoặc dữ liệu dùng hỗ trợ lí lẽ"
+    ],
+    [
+      "Thơ lục bát",
+      "Thể thơ gồm cặp dòng sáu tiếng và tám tiếng"
+    ]
+  ],
+  "Tiếng Anh": [
+    [
+      "Noun",
+      "Word naming a person, place, thing or idea"
+    ],
+    [
+      "Verb",
+      "Word expressing an action or state"
+    ],
+    [
+      "Adjective",
+      "Word describing a noun"
+    ],
+    [
+      "Adverb",
+      "Word modifying a verb, adjective or another adverb"
+    ],
+    [
+      "Pronoun",
+      "Word used instead of a noun phrase"
+    ],
+    [
+      "Preposition",
+      "Word expressing a relation such as place or time"
+    ],
+    [
+      "Conjunction",
+      "Word linking words or clauses"
+    ],
+    [
+      "Article",
+      "Word such as a, an or the before a noun"
+    ],
+    [
+      "Present simple",
+      "Tense commonly used for habits and facts"
+    ],
+    [
+      "Present continuous",
+      "Tense commonly used for actions happening now"
+    ],
+    [
+      "Past simple",
+      "Tense for completed past events"
+    ],
+    [
+      "Future with will",
+      "Structure often used for predictions or decisions made now"
+    ],
+    [
+      "Comparative",
+      "Form used to compare two entities"
+    ],
+    [
+      "Superlative",
+      "Form expressing the highest or lowest degree in a group"
+    ],
+    [
+      "Question word where",
+      "Question word asking about a place"
+    ],
+    [
+      "Question word when",
+      "Question word asking about time"
+    ]
+  ],
+  "Vật lí": [
+    [
+      "Chuyển động cơ học",
+      "Sự thay đổi vị trí của vật theo thời gian so với vật mốc"
+    ],
+    [
+      "Tốc độ",
+      "Đại lượng biểu thị mức nhanh chậm của chuyển động"
+    ],
+    [
+      "Vận tốc",
+      "Đại lượng vectơ thể hiện độ biến thiên vị trí theo thời gian"
+    ],
+    [
+      "Gia tốc",
+      "Đại lượng mô tả mức biến thiên vận tốc theo thời gian"
+    ],
+    [
+      "Lực",
+      "Tác dụng có thể làm thay đổi chuyển động hoặc biến dạng vật"
+    ],
+    [
+      "Trọng lực",
+      "Lực hút của Trái Đất tác dụng lên vật"
+    ],
+    [
+      "Ma sát",
+      "Lực cản tương đối giữa các bề mặt tiếp xúc"
+    ],
+    [
+      "Áp suất",
+      "Độ lớn áp lực trên một đơn vị diện tích bị ép"
+    ],
+    [
+      "Khối lượng riêng",
+      "Khối lượng trên một đơn vị thể tích"
+    ],
+    [
+      "Công cơ học",
+      "Năng lượng truyền khi lực gây ra độ dời"
+    ],
+    [
+      "Công suất",
+      "Công thực hiện trong một đơn vị thời gian"
+    ],
+    [
+      "Động năng",
+      "Năng lượng vật có do chuyển động"
+    ],
+    [
+      "Thế năng trọng trường",
+      "Năng lượng vật có do vị trí trong trọng trường"
+    ],
+    [
+      "Dòng điện",
+      "Dòng chuyển dời có hướng của các hạt mang điện"
+    ],
+    [
+      "Hiệu điện thế",
+      "Đại lượng biểu thị chênh lệch điện thế giữa hai điểm"
+    ],
+    [
+      "Điện trở",
+      "Đại lượng đặc trưng mức cản trở dòng điện"
+    ]
+  ],
+  "Hóa học": [
+    [
+      "Nguyên tử",
+      "Hạt cấu tạo nên chất gồm hạt nhân và electron"
+    ],
+    [
+      "Phân tử",
+      "Hạt gồm các nguyên tử liên kết thể hiện tính chất hóa học của chất"
+    ],
+    [
+      "Nguyên tố hóa học",
+      "Tập hợp nguyên tử cùng số proton"
+    ],
+    [
+      "Đơn chất",
+      "Chất tạo nên từ một nguyên tố hóa học"
+    ],
+    [
+      "Hợp chất",
+      "Chất tạo nên từ hai nguyên tố hóa học trở lên"
+    ],
+    [
+      "Phản ứng hóa học",
+      "Quá trình biến đổi chất ban đầu thành chất mới"
+    ],
+    [
+      "Chất phản ứng",
+      "Chất tham gia ở phía trước biến đổi hóa học"
+    ],
+    [
+      "Sản phẩm",
+      "Chất được tạo thành sau phản ứng"
+    ],
+    [
+      "Chất xúc tác",
+      "Chất thay đổi tốc độ phản ứng và được hoàn lại về mặt hóa học"
+    ],
+    [
+      "Dung dịch",
+      "Hỗn hợp đồng nhất của chất tan và dung môi"
+    ],
+    [
+      "Dung môi",
+      "Thành phần hòa tan chất khác để tạo dung dịch"
+    ],
+    [
+      "Chất tan",
+      "Chất được phân tán đồng nhất trong dung môi"
+    ],
+    [
+      "Axit",
+      "Chất có thể cho proton theo định nghĩa Brønsted"
+    ],
+    [
+      "Bazơ",
+      "Chất có thể nhận proton theo định nghĩa Brønsted"
+    ],
+    [
+      "Sự oxi hóa",
+      "Quá trình một chất nhường electron"
+    ],
+    [
+      "Sự khử",
+      "Quá trình một chất nhận electron"
+    ]
+  ],
+  "Sinh học": [
+    [
+      "Tế bào",
+      "Đơn vị cấu trúc và chức năng cơ bản của cơ thể sống"
+    ],
+    [
+      "Nhân tế bào",
+      "Bào quan chứa phần lớn vật chất di truyền ở tế bào nhân thực"
+    ],
+    [
+      "Màng sinh chất",
+      "Lớp bao tế bào điều hòa chất ra vào"
+    ],
+    [
+      "Tế bào chất",
+      "Phần nằm giữa màng sinh chất và nhân ở tế bào nhân thực"
+    ],
+    [
+      "Ti thể",
+      "Bào quan tham gia tạo phần lớn ATP của tế bào nhân thực"
+    ],
+    [
+      "Lục lạp",
+      "Bào quan quang hợp ở thực vật và một số sinh vật"
+    ],
+    [
+      "Quang hợp",
+      "Quá trình sử dụng năng lượng ánh sáng để tổng hợp chất hữu cơ"
+    ],
+    [
+      "Hô hấp tế bào",
+      "Quá trình giải phóng năng lượng từ chất hữu cơ trong tế bào"
+    ],
+    [
+      "Mô",
+      "Nhóm tế bào có cấu trúc và chức năng tương tự"
+    ],
+    [
+      "Cơ quan",
+      "Bộ phận gồm nhiều mô phối hợp thực hiện chức năng"
+    ],
+    [
+      "Hệ cơ quan",
+      "Nhóm cơ quan phối hợp thực hiện chức năng sống"
+    ],
+    [
+      "Gen",
+      "Đoạn vật chất di truyền mang thông tin cho sản phẩm chức năng"
+    ],
+    [
+      "Nhiễm sắc thể",
+      "Cấu trúc chứa ADN liên kết với protein"
+    ],
+    [
+      "Sinh sản vô tính",
+      "Hình thức tạo thế hệ mới không có sự hợp nhất giao tử"
+    ],
+    [
+      "Sinh sản hữu tính",
+      "Hình thức có sự hợp nhất giao tử"
+    ],
+    [
+      "Hệ sinh thái",
+      "Hệ thống gồm quần xã sinh vật và môi trường vô sinh"
+    ]
+  ],
+  "Lịch sử": [
+    [
+      "Sử liệu",
+      "Tư liệu cung cấp thông tin về quá khứ"
+    ],
+    [
+      "Sử liệu gốc",
+      "Tư liệu hình thành trực tiếp từ thời kì được nghiên cứu"
+    ],
+    [
+      "Niên đại",
+      "Mốc thời gian của sự kiện lịch sử"
+    ],
+    [
+      "Thập kỉ",
+      "Khoảng thời gian mười năm"
+    ],
+    [
+      "Thế kỉ",
+      "Khoảng thời gian một trăm năm"
+    ],
+    [
+      "Thiên niên kỉ",
+      "Khoảng thời gian một nghìn năm"
+    ],
+    [
+      "Khảo cổ học",
+      "Ngành nghiên cứu quá khứ qua di tích và hiện vật"
+    ],
+    [
+      "Di tích lịch sử",
+      "Địa điểm hoặc công trình gắn với sự kiện quá khứ"
+    ],
+    [
+      "Hiện vật",
+      "Đồ vật còn lại từ thời kì trước"
+    ],
+    [
+      "Bản đồ lịch sử",
+      "Bản đồ thể hiện không gian của quá trình lịch sử"
+    ],
+    [
+      "Văn minh",
+      "Trình độ phát triển vật chất và tinh thần của xã hội"
+    ],
+    [
+      "Nhà nước",
+      "Tổ chức quyền lực chính trị quản lí xã hội trên lãnh thổ"
+    ],
+    [
+      "Triều đại",
+      "Chuỗi các đời vua thuộc một dòng họ cầm quyền"
+    ],
+    [
+      "Khởi nghĩa",
+      "Hoạt động nổi dậy chống lại một quyền lực"
+    ],
+    [
+      "Cải cách",
+      "Sự thay đổi có chủ đích nhằm điều chỉnh một thể chế"
+    ],
+    [
+      "Hòa ước",
+      "Văn kiện thỏa thuận hòa bình giữa các bên"
+    ]
+  ],
+  "Địa lí": [
+    [
+      "Kinh tuyến",
+      "Nửa đường tròn nối hai cực trên bề mặt địa cầu"
+    ],
+    [
+      "Vĩ tuyến",
+      "Vòng tròn song song với xích đạo trên địa cầu"
+    ],
+    [
+      "Xích đạo",
+      "Vĩ tuyến gốc chia Trái Đất thành hai bán cầu"
+    ],
+    [
+      "Kinh độ",
+      "Tọa độ góc tính về phía đông hoặc tây kinh tuyến gốc"
+    ],
+    [
+      "Vĩ độ",
+      "Tọa độ góc tính về phía bắc hoặc nam xích đạo"
+    ],
+    [
+      "Bản đồ",
+      "Hình biểu diễn thu nhỏ có chọn lọc bề mặt địa lí"
+    ],
+    [
+      "Tỉ lệ bản đồ",
+      "Tỉ số giữa khoảng cách trên bản đồ và thực địa"
+    ],
+    [
+      "Chú giải bản đồ",
+      "Phần giải thích kí hiệu được dùng trên bản đồ"
+    ],
+    [
+      "Địa hình",
+      "Hình dạng cao thấp của bề mặt Trái Đất"
+    ],
+    [
+      "Cao nguyên",
+      "Vùng đất tương đối bằng phẳng ở độ cao lớn"
+    ],
+    [
+      "Đồng bằng",
+      "Vùng địa hình tương đối thấp và bằng phẳng"
+    ],
+    [
+      "Khí hậu",
+      "Đặc điểm thời tiết trung bình trong thời gian dài"
+    ],
+    [
+      "Thời tiết",
+      "Trạng thái khí quyển tại địa điểm và thời điểm nhất định"
+    ],
+    [
+      "Lưu vực sông",
+      "Vùng đất cung cấp nước cho một hệ thống sông"
+    ],
+    [
+      "Mật độ dân số",
+      "Số người trung bình trên một đơn vị diện tích"
+    ],
+    [
+      "Đô thị hóa",
+      "Quá trình gia tăng dân cư đô thị và lối sống đô thị"
+    ]
+  ],
+  "Giáo dục công dân": [
+    [
+      "Quyền",
+      "Khả năng được pháp luật công nhận và bảo vệ"
+    ],
+    [
+      "Nghĩa vụ",
+      "Việc một người phải thực hiện theo chuẩn mực hoặc pháp luật"
+    ],
+    [
+      "Trách nhiệm",
+      "Ý thức và sự thực hiện điều mình phải làm"
+    ],
+    [
+      "Trung thực",
+      "Tôn trọng sự thật trong lời nói và hành động"
+    ],
+    [
+      "Tôn trọng",
+      "Thừa nhận giá trị và quyền lợi chính đáng của người khác"
+    ],
+    [
+      "Khoan dung",
+      "Biết cảm thông và tha thứ cho lỗi lầm có thể sửa chữa"
+    ],
+    [
+      "Hợp tác",
+      "Cùng phối hợp để đạt mục tiêu chung"
+    ],
+    [
+      "Kỉ luật",
+      "Tuân thủ các quy tắc đã được đặt ra phù hợp"
+    ],
+    [
+      "Tự chủ",
+      "Biết điều chỉnh cảm xúc và hành vi của mình"
+    ],
+    [
+      "Tiết kiệm",
+      "Sử dụng hợp lí nguồn lực và tránh lãng phí"
+    ],
+    [
+      "Công bằng",
+      "Đối xử có căn cứ, không thiên vị vô lí"
+    ],
+    [
+      "Bình đẳng",
+      "Mọi người có vị thế ngang nhau về quyền cơ bản"
+    ],
+    [
+      "Pháp luật",
+      "Hệ thống quy tắc xử sự chung do nhà nước ban hành hoặc thừa nhận"
+    ],
+    [
+      "Đạo đức",
+      "Hệ thống chuẩn mực điều chỉnh hành vi bằng lương tâm và dư luận"
+    ],
+    [
+      "Bạo lực học đường",
+      "Hành vi gây hại trong môi trường học đường"
+    ],
+    [
+      "Công dân số",
+      "Người tham gia môi trường số có trách nhiệm và tuân thủ quy tắc"
+    ]
+  ],
+  "Tin học": [
+    [
+      "Thuật toán",
+      "Dãy hữu hạn các bước giải quyết một bài toán"
+    ],
+    [
+      "Biến",
+      "Tên gắn với giá trị có thể thay đổi khi chạy chương trình"
+    ],
+    [
+      "Hằng",
+      "Giá trị được quy ước không thay đổi trong ngữ cảnh"
+    ],
+    [
+      "Câu lệnh điều kiện",
+      "Cấu trúc lựa chọn nhánh theo điều kiện"
+    ],
+    [
+      "Vòng lặp",
+      "Cấu trúc thực hiện lặp lại nhóm lệnh"
+    ],
+    [
+      "Danh sách",
+      "Cấu trúc chứa nhiều phần tử có thứ tự"
+    ],
+    [
+      "Hàm",
+      "Khối lệnh được đặt tên để tái sử dụng"
+    ],
+    [
+      "Tham số",
+      "Tên đại diện dữ liệu đầu vào của hàm"
+    ],
+    [
+      "Đối số",
+      "Giá trị thực tế truyền vào khi gọi hàm"
+    ],
+    [
+      "Kiểu bool",
+      "Kiểu dữ liệu nhận giá trị đúng hoặc sai"
+    ],
+    [
+      "Kiểu int",
+      "Kiểu dữ liệu biểu diễn số nguyên"
+    ],
+    [
+      "Chuỗi",
+      "Dãy kí tự dùng lưu dữ liệu văn bản"
+    ],
+    [
+      "Gỡ lỗi",
+      "Quá trình tìm và sửa lỗi chương trình"
+    ],
+    [
+      "Tệp tin",
+      "Đơn vị lưu trữ dữ liệu có tên"
+    ],
+    [
+      "Mạng máy tính",
+      "Tập hợp thiết bị kết nối để trao đổi dữ liệu"
+    ],
+    [
+      "Sao lưu",
+      "Tạo bản dự phòng nhằm khôi phục dữ liệu khi cần"
+    ]
+  ],
+  "Công nghệ": [
+    [
+      "Bản vẽ kĩ thuật",
+      "Tài liệu dùng hình biểu diễn và kí hiệu để mô tả sản phẩm"
+    ],
+    [
+      "Hình chiếu đứng",
+      "Hình biểu diễn khi nhìn vật thể từ phía trước"
+    ],
+    [
+      "Hình chiếu bằng",
+      "Hình biểu diễn khi nhìn vật thể từ phía trên"
+    ],
+    [
+      "Hình chiếu cạnh",
+      "Hình biểu diễn khi nhìn vật thể từ một bên"
+    ],
+    [
+      "Tỉ lệ bản vẽ",
+      "Tỉ số kích thước trên hình vẽ so với kích thước thực"
+    ],
+    [
+      "Vật liệu kim loại",
+      "Nhóm vật liệu có tính dẫn điện và dẫn nhiệt điển hình"
+    ],
+    [
+      "Vật liệu phi kim",
+      "Nhóm vật liệu như nhựa, gỗ hoặc cao su"
+    ],
+    [
+      "Gia công",
+      "Tác động kĩ thuật để tạo hình dạng hoặc kích thước sản phẩm"
+    ],
+    [
+      "Lắp ghép",
+      "Liên kết các bộ phận thành sản phẩm"
+    ],
+    [
+      "Thiết kế kĩ thuật",
+      "Quá trình xác định vấn đề, đề xuất và hoàn thiện giải pháp"
+    ],
+    [
+      "Nguyên mẫu",
+      "Phiên bản thử nghiệm của sản phẩm thiết kế"
+    ],
+    [
+      "Mạch điện",
+      "Hệ thống các phần tử điện được kết nối"
+    ],
+    [
+      "Cầu chì",
+      "Thiết bị bảo vệ ngắt mạch khi dòng quá mức"
+    ],
+    [
+      "Công tắc",
+      "Thiết bị dùng đóng hoặc ngắt mạch điện"
+    ],
+    [
+      "Tiết kiệm năng lượng",
+      "Sử dụng năng lượng hiệu quả để tránh lãng phí"
+    ],
+    [
+      "An toàn lao động",
+      "Biện pháp phòng ngừa nguy cơ khi thực hiện công việc"
+    ]
+  ],
+  "Khoa học tự nhiên": [
+    [
+      "Quan sát khoa học",
+      "Thu thập thông tin bằng giác quan và công cụ"
+    ],
+    [
+      "Giả thuyết",
+      "Giải thích dự kiến cần được kiểm chứng"
+    ],
+    [
+      "Thí nghiệm",
+      "Hoạt động kiểm tra giả thuyết trong điều kiện xác định"
+    ],
+    [
+      "Biến độc lập",
+      "Yếu tố do người nghiên cứu chủ động thay đổi"
+    ],
+    [
+      "Biến phụ thuộc",
+      "Yếu tố được đo để xem tác động của sự thay đổi"
+    ],
+    [
+      "Biến kiểm soát",
+      "Yếu tố giữ ổn định để phép thử có ý nghĩa"
+    ],
+    [
+      "Đơn vị đo",
+      "Chuẩn dùng biểu diễn độ lớn của đại lượng"
+    ],
+    [
+      "Khối lượng",
+      "Đại lượng chỉ lượng vật chất theo cách đo cơ học"
+    ],
+    [
+      "Thể tích",
+      "Độ đo phần không gian vật chiếm"
+    ],
+    [
+      "Nhiệt độ",
+      "Đại lượng thể hiện mức nóng lạnh"
+    ],
+    [
+      "Nguyên tử",
+      "Đơn vị cơ bản của nguyên tố hóa học"
+    ],
+    [
+      "Tế bào",
+      "Đơn vị cơ bản cấu tạo cơ thể sống"
+    ],
+    [
+      "Năng lượng",
+      "Đại lượng có thể truyền hoặc chuyển hóa tạo biến đổi"
+    ],
+    [
+      "Lực",
+      "Tác dụng có thể đổi chuyển động hoặc hình dạng vật"
+    ],
+    [
+      "Hệ sinh thái",
+      "Quần xã và môi trường vô sinh tương tác"
+    ],
+    [
+      "Tài nguyên tái tạo",
+      "Nguồn tài nguyên có khả năng bổ sung tự nhiên trong điều kiện phù hợp"
+    ]
+  ],
+  "Âm nhạc": [
+    [
+      "Nhịp",
+      "Sự tổ chức phách thành nhóm lặp lại trong bản nhạc"
+    ],
+    [
+      "Phách",
+      "Đơn vị thời gian đều đặn để cảm nhận nhịp"
+    ],
+    [
+      "Nhịp 2/4",
+      "Loại nhịp mỗi ô có hai phách đen"
+    ],
+    [
+      "Nhịp 3/4",
+      "Loại nhịp mỗi ô có ba phách đen"
+    ],
+    [
+      "Cao độ",
+      "Độ cao thấp của âm thanh"
+    ],
+    [
+      "Trường độ",
+      "Độ dài ngắn của âm thanh"
+    ],
+    [
+      "Cường độ",
+      "Độ mạnh nhẹ của âm thanh"
+    ],
+    [
+      "Âm sắc",
+      "Đặc trưng giúp phân biệt nguồn âm có cùng cao độ"
+    ],
+    [
+      "Giai điệu",
+      "Chuỗi âm thanh có quan hệ về cao độ và tiết tấu"
+    ],
+    [
+      "Tiết tấu",
+      "Sự sắp xếp độ dài ngắn của âm và khoảng nghỉ"
+    ],
+    [
+      "Hòa âm",
+      "Sự kết hợp các âm vang lên đồng thời"
+    ],
+    [
+      "Khuông nhạc",
+      "Năm dòng kẻ song song để ghi nốt"
+    ],
+    [
+      "Khóa Sol",
+      "Kí hiệu quy định nốt Sol trên dòng thứ hai"
+    ],
+    [
+      "Nốt tròn",
+      "Hình nốt có độ dài bằng bốn nốt đen thông thường"
+    ],
+    [
+      "Dấu lặng",
+      "Kí hiệu chỉ khoảng im lặng trong âm nhạc"
+    ],
+    [
+      "Hợp xướng",
+      "Hình thức nhiều người hát phối hợp thành bè"
+    ]
+  ],
+  "Mĩ thuật": [
+    [
+      "Đường nét",
+      "Yếu tố tạo hướng và hình trong tạo hình"
+    ],
+    [
+      "Hình mảng",
+      "Phần diện có ranh giới xác định trong bố cục"
+    ],
+    [
+      "Màu cơ bản",
+      "Những màu làm nền tảng pha trộn trong một hệ màu"
+    ],
+    [
+      "Màu bổ túc",
+      "Cặp màu đối nhau trên vòng màu của một hệ màu"
+    ],
+    [
+      "Sắc độ",
+      "Mức sáng tối của một màu"
+    ],
+    [
+      "Hòa sắc",
+      "Sự phối hợp màu tạo hiệu quả chung"
+    ],
+    [
+      "Bố cục",
+      "Cách sắp xếp các yếu tố trong tác phẩm"
+    ],
+    [
+      "Tỉ lệ",
+      "Quan hệ kích thước giữa các bộ phận"
+    ],
+    [
+      "Điểm nhấn",
+      "Yếu tố thu hút sự chú ý trong tác phẩm"
+    ],
+    [
+      "Phối cảnh",
+      "Phương pháp biểu hiện chiều sâu trên mặt phẳng"
+    ],
+    [
+      "Đậm nhạt",
+      "Sự khác nhau về độ sáng tối"
+    ],
+    [
+      "Chất liệu",
+      "Vật liệu dùng để tạo tác phẩm"
+    ],
+    [
+      "Kí họa",
+      "Vẽ nhanh để ghi nhận đặc điểm đối tượng"
+    ],
+    [
+      "Tranh phong cảnh",
+      "Tranh có cảnh quan thiên nhiên hoặc không gian làm chủ thể"
+    ],
+    [
+      "Tranh tĩnh vật",
+      "Tranh diễn tả đồ vật không chuyển động"
+    ],
+    [
+      "Điêu khắc",
+      "Loại hình tạo hình tác phẩm trong không gian ba chiều"
+    ]
+  ],
+  "Giáo dục thể chất": [
+    [
+      "Khởi động",
+      "Hoạt động chuẩn bị cơ thể trước vận động chính"
+    ],
+    [
+      "Thả lỏng",
+      "Hoạt động nhẹ giúp cơ thể phục hồi sau vận động"
+    ],
+    [
+      "Sức bền",
+      "Khả năng duy trì vận động trong thời gian dài"
+    ],
+    [
+      "Sức mạnh",
+      "Khả năng cơ bắp tạo lực"
+    ],
+    [
+      "Tốc độ",
+      "Khả năng thực hiện động tác trong thời gian ngắn"
+    ],
+    [
+      "Khéo léo",
+      "Khả năng phối hợp động tác chính xác linh hoạt"
+    ],
+    [
+      "Thăng bằng",
+      "Khả năng giữ cơ thể ổn định"
+    ],
+    [
+      "Phối hợp vận động",
+      "Khả năng kết hợp hoạt động nhiều bộ phận cơ thể"
+    ],
+    [
+      "Nhịp tim",
+      "Số lần tim đập trong một đơn vị thời gian"
+    ],
+    [
+      "Hô hấp",
+      "Quá trình trao đổi khí của cơ thể"
+    ],
+    [
+      "Tư thế",
+      "Cách sắp xếp các bộ phận cơ thể khi đứng hoặc vận động"
+    ],
+    [
+      "Luật chơi",
+      "Quy tắc thống nhất cho hoạt động thể thao"
+    ],
+    [
+      "Tinh thần đồng đội",
+      "Thái độ phối hợp và hỗ trợ trong tập thể"
+    ],
+    [
+      "Chơi đẹp",
+      "Hành vi tôn trọng luật và đối thủ"
+    ],
+    [
+      "Nước uống",
+      "Nguồn bù chất lỏng giúp duy trì hoạt động cơ thể"
+    ],
+    [
+      "Nghỉ ngơi",
+      "Khoảng thời gian phục hồi sau hoạt động thể lực"
+    ]
+  ],
+  "Hoạt động trải nghiệm": [
+    [
+      "Mục tiêu cá nhân",
+      "Kết quả một người muốn hướng đến"
+    ],
+    [
+      "Lập kế hoạch",
+      "Xác định việc cần làm, thời gian và nguồn lực"
+    ],
+    [
+      "Quản lí thời gian",
+      "Sắp xếp thời lượng cho hoạt động ưu tiên"
+    ],
+    [
+      "Tự đánh giá",
+      "Nhìn nhận mức đạt được và điều cần cải thiện của bản thân"
+    ],
+    [
+      "Phản hồi",
+      "Thông tin nhận xét để điều chỉnh hoạt động"
+    ],
+    [
+      "Lắng nghe tích cực",
+      "Tập trung hiểu ý người nói và phản hồi phù hợp"
+    ],
+    [
+      "Giao tiếp hợp tác",
+      "Trao đổi thông tin để phối hợp đạt mục tiêu"
+    ],
+    [
+      "Giải quyết xung đột",
+      "Tìm cách xử lí bất đồng tôn trọng các bên"
+    ],
+    [
+      "Hoạt động cộng đồng",
+      "Hoạt động hướng đến lợi ích chung của cộng đồng"
+    ],
+    [
+      "Tình nguyện",
+      "Tự nguyện góp sức giúp người khác hoặc tập thể"
+    ],
+    [
+      "Dự án nhỏ",
+      "Chuỗi hoạt động có mục tiêu và sản phẩm cụ thể"
+    ],
+    [
+      "Quản lí rủi ro",
+      "Nhận diện nguy cơ và chuẩn bị biện pháp ứng phó"
+    ],
+    [
+      "Làm việc nhóm",
+      "Các thành viên phân công và phối hợp thực hiện việc chung"
+    ],
+    [
+      "Sơ đồ tư duy",
+      "Cách hệ thống hóa ý tưởng bằng nhánh liên kết"
+    ],
+    [
+      "Nhật kí trải nghiệm",
+      "Ghi chép quá trình và bài học từ hoạt động"
+    ],
+    [
+      "Định hướng nghề nghiệp",
+      "Khám phá sở thích năng lực và thông tin nghề để lựa chọn"
+    ]
+  ]
+}
