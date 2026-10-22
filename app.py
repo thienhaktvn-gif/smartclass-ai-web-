@@ -17,8 +17,9 @@ SECRET=os.environ.get('SMARTCLASS_SECRET','')
 ADMIN_PASSWORD=os.environ.get('SMARTCLASS_ADMIN_PASSWORD','')
 ADMIN_USER=os.environ.get('SMARTCLASS_ADMIN_USER','giaovien')
 AI_KEY=os.environ.get('GEMINI_API_KEY','')
-AI_MODEL=os.environ.get('GEMINI_MODEL','gemini-2.5-flash')
-IMAGE_MODEL=os.environ.get('GEMINI_IMAGE_MODEL','gemini-2.5-flash-image')
+AI_MODEL=os.environ.get('GEMINI_MODEL','gemini-3.8-flash')
+IMAGE_MODEL=os.environ.get('GEMINI_IMAGE_MODEL','gemini-nano-banana-2.1')
+VIDEO_MODEL=os.environ.get('GEMINI_VIDEO_MODEL','gemini-omni-1.1-flash')
 MEDIA=ROOT/'media';MEDIA.mkdir(exist_ok=True)
 PUBLIC_URL=os.environ.get('PUBLIC_URL','')
 SESSIONS={}
@@ -81,6 +82,34 @@ def gemini(parts,model=None,timeout=70,config=None):
   raise RuntimeError(f'Gemini trả lỗi HTTP {e.code}. Kiểm tra model và hạn mức.')
  except (urllib.error.URLError,TimeoutError):raise RuntimeError('Không kết nối được Gemini.')
 
+def gemini_interaction(model, prompt, media_type, timeout=120):
+ if not AI_KEY:raise RuntimeError('Chưa cấu hình GEMINI_API_KEY trên Render.')
+ if not re.fullmatch(r'[a-zA-Z0-9_.-]{3,80}', model):raise RuntimeError('Tên model không hợp lệ.')
+ if media_type not in ('image','video'):raise ValueError('Loại nội dung không hợp lệ')
+ payload={'model':model,'input':prompt,'response_format':{'type':media_type}}
+ if media_type=='video':payload['response_format']['resolution']='360p'
+ req=urllib.request.Request('https://generativelanguage.googleapis.com/v1beta/interactions', data=json.dumps(payload).encode(),headers={'x-goog-api-key':AI_KEY,'Content-Type':'application/json'},method='POST')
+ try:
+  with urllib.request.urlopen(req,timeout=timeout) as response: result=json.load(response)
+ except urllib.error.HTTPError as exc:
+  try: detail=json.loads(exc.read(8192).decode()).get('error',{}).get('message','')
+  except Exception:detail=''
+  if exc.code==429:raise RuntimeError('Google API giới hạn tạo '+('ảnh' if media_type=='image' else 'video')+' (HTTP 429). Kiểm tra quota model trong Google AI Studio. '+str(detail)[:220])
+  if exc.code in (401,403):raise RuntimeError('API Key không được cấp quyền tạo '+('ảnh' if media_type=='image' else 'video')+' (HTTP '+str(exc.code)+').')
+  if exc.code==404:raise RuntimeError('Model '+model+' không khả dụng cho dự án hoặc endpoint (HTTP 404).')
+  raise RuntimeError('Gemini '+media_type+' HTTP '+str(exc.code)+': '+str(detail)[:250])
+ except (urllib.error.URLError,TimeoutError) as exc:raise RuntimeError('Hết thời gian hoặc không kết nối được dịch vụ tạo '+media_type+'.') from exc
+ if result.get('status') not in (None,'completed'):
+  raise RuntimeError('Google đang xử lý tác vụ '+media_type+'; phản hồi hiện chưa có tệp hoàn chỉnh. Trạng thái: '+str(result.get('status'))[:50])
+ for step in result.get('steps',[]):
+  for item in step.get('content',[]):
+   if item.get('type')==media_type and item.get('data'):
+    mime=item.get('mime_type','image/png' if media_type=='image' else 'video/mp4')
+    try:raw=base64.b64decode(item['data'],validate=True)
+    except Exception:raise RuntimeError('Google trả nội dung base64 không hợp lệ.')
+    return raw,mime
+ raise RuntimeError('Model không trả '+media_type+' trực tiếp. Kiểm tra quyền truy cập và cấu trúc phản hồi API.')
+
 def gemini_text(prompt):
  r=gemini([{'text':prompt}],config={'responseMimeType':'application/json'})
  parts=[p.get('text','') for c in r.get('candidates',[]) for p in c.get('content',{}).get('parts',[])]
@@ -136,10 +165,10 @@ class H(BaseHTTPRequestHandler):
   p=urlparse(self.path).path
   if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1'})
   if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
-  if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':False,'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
+  if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/showcase-demo.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -169,12 +198,12 @@ class H(BaseHTTPRequestHandler):
    return self.sendj(200,{'game':safe_game(g),'items':[public_question(x) for x in q]})
   if p.startswith('/media/'):
    name=p.split('/')[-1]
-   if not re.fullmatch(r'[a-f0-9]{32}\.(png|jpg|webp)',name):return self.err(404,'Không tìm thấy hình ảnh.')
+   if not re.fullmatch(r'[a-f0-9]{32}\.(png|jpg|webp|mp4)',name):return self.err(404,'Không tìm thấy hình ảnh.')
    s=self.session()
    if not s:return self.err(401,'Hãy đăng nhập giáo viên.')
    target=MEDIA/name
    if not target.is_file():return self.err(404,'Không tìm thấy hình ảnh.')
-   b=target.read_bytes();self.send_response(200);self.send_header('Content-Type',{'png':'image/png','jpg':'image/jpeg','webp':'image/webp'}[name.rsplit('.',1)[1]]);self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','private, no-store');self.end_headers();return self.wfile.write(b)
+   b=target.read_bytes();self.send_response(200);self.send_header('Content-Type',{'png':'image/png','jpg':'image/jpeg','webp':'image/webp','mp4':'video/mp4'}[name.rsplit('.',1)[1]]);self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','private, no-store');self.end_headers();return self.wfile.write(b)
   if p=='/api/students/export':
    if not self.session():return self.err(401,'Vui lòng đăng nhập giáo viên.')
    query=urlparse(self.path).query
@@ -500,22 +529,21 @@ class H(BaseHTTPRequestHandler):
     with db() as c:cur=c.execute('INSERT INTO lesson_media(title,kind,content) VALUES(?,?,?)',(str(result.get('title',topic))[:130],'storyboard',content))
     return self.sendj(200,{'id':cur.lastrowid,'storyboard':result,'note':'Đây là kịch bản, KHÔNG phải tệp video. Chức năng tạo video thật chưa được kết nối.'})
    except (RuntimeError,ValueError,KeyError,TypeError) as e:return self.err(502,str(e) if isinstance(e,RuntimeError) else 'Gemini trả kịch bản không hợp lệ.')
-  if p=='/api/ai/image':
+  if p in ('/api/ai/image','/api/ai/video'):
+   media_type='image' if p.endswith('/image') else 'video'
    prompt=str(d.get('prompt','')).strip()[:600]
-   if len(prompt)<8:return self.err(400,'Mô tả ảnh ít nhất 8 ký tự.')
+   if len(prompt)<8:return self.err(400,'Mô tả cần ít nhất 8 ký tự.')
+   model=IMAGE_MODEL if media_type=='image' else VIDEO_MODEL
    try:
-    response=gemini([{'text':'Tạo một minh họa giáo dục an toàn, rõ nét, không có chữ, không có thông tin nhận dạng học sinh: '+prompt}],model=IMAGE_MODEL,timeout=110,config={'responseModalities':['TEXT','IMAGE']})
-    parts=[p for x in response.get('candidates',[]) for p in x.get('content',{}).get('parts',[])]
-    item=next((p['inlineData'] for p in parts if 'inlineData' in p),None)
-    if not item:raise RuntimeError('Model không trả ảnh. Hãy kiểm tra quyền truy cập và model tạo ảnh Gemini.')
-    mime=item.get('mimeType','image/png');ext={'image/png':'png','image/jpeg':'jpg','image/webp':'webp'}.get(mime)
-    if not ext:raise RuntimeError('Định dạng ảnh không được hỗ trợ.')
-    b=base64.b64decode(item['data'],validate=True)
-    if not b or len(b)>8_000_000:raise RuntimeError('Tệp ảnh không hợp lệ hoặc quá lớn.')
-    filename=uuid.uuid4().hex+'.'+ext;(MEDIA/filename).write_bytes(b)
-    with db() as c:cur=c.execute('INSERT INTO lesson_media(title,kind,content,filename) VALUES(?,?,?,?)',(prompt[:130],'image',prompt,filename))
-    return self.sendj(200,{'id':cur.lastrowid,'url':'/media/'+filename,'note':'Ảnh do Gemini tạo. Chỉ lưu trên ổ đĩa máy chủ hiện tại.'})
-   except (RuntimeError,ValueError,KeyError,TypeError) as e:return self.err(502,str(e) if isinstance(e,RuntimeError) else 'Gemini trả ảnh không hợp lệ.')
+    description='Tạo một minh họa giáo dục an toàn, không có thông tin cá nhân học sinh: ' if media_type=='image' else 'Tạo video ngắn phục vụ dạy học, không sử dụng hình ảnh hay thông tin nhận dạng trẻ em thật: '
+    raw,mime=gemini_interaction(model,description+prompt,media_type,timeout=150)
+    allowed={'image':{'image/png':'png','image/jpeg':'jpg','image/webp':'webp'},'video':{'video/mp4':'mp4'}}[media_type]
+    ext=allowed.get(mime)
+    if not ext or not raw or len(raw)>30_000_000:raise RuntimeError('Tệp trả về không hợp lệ, quá lớn hoặc sai định dạng.')
+    filename=uuid.uuid4().hex+'.'+ext;(MEDIA/filename).write_bytes(raw)
+    with db() as c:cur=c.execute('INSERT INTO lesson_media(title,kind,content,filename) VALUES(?,?,?,?)',(prompt[:130],media_type,prompt,filename))
+    return self.sendj(200,{'id':cur.lastrowid,'url':'/media/'+filename,'kind':media_type,'note':'Nội dung AI tạo thực tế; tệp trên Render Free có thể mất khi khởi động lại.'})
+   except (RuntimeError,ValueError,KeyError,TypeError) as e:return self.err(502,str(e) if isinstance(e,RuntimeError) else 'Gemini trả tệp không hợp lệ.')
   if p=='/api/ai/generate':
    if not AI_KEY:return self.err(503,'AI chưa cấu hình. Chức năng ngân hàng đề thủ công và chấm trắc nghiệm vẫn hoạt động.')
    subject=str(d.get('subject','Tin học'))[:70];grade=str(d.get('grade','9'))[:20];topic=str(d.get('topic','Thuật toán'))[:130]
