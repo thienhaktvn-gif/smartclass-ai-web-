@@ -169,7 +169,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/planner-ai.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -436,25 +436,81 @@ class H(BaseHTTPRequestHandler):
     if found!=len(set(a[0] for a in parsed)) or found!=len(parsed):return self.err(400,'Có mã học sinh không hợp lệ hoặc trùng.')
     c.executemany('INSERT INTO attendance(student_id,day,status,note) VALUES(?,?,?,?) ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note',parsed)
    return self.sendj(200,{'saved':len(parsed),'day':day})
+  if p=='/api/classes/delete':
+   try:cid=int(d.get('id'))
+   except:return self.err(400,'Mã lớp không hợp lệ.')
+   with db() as c:
+    cl=c.execute('SELECT name FROM classes WHERE id=?',(cid,)).fetchone()
+    if not cl:return self.err(404,'Lớp không tồn tại.')
+    count=c.execute('SELECT COUNT(*) FROM students WHERE class_id=?',(cid,)).fetchone()[0]
+    if count:return self.err(409,'Lớp còn '+str(count)+' học sinh. Hãy chuyển học sinh sang lớp khác trước khi xóa.')
+    c.execute('DELETE FROM classes WHERE id=?',(cid,))
+   return self.sendj(200,{'deleted':1})
+  if p=='/api/students/move':
+   try:ids=list(dict.fromkeys(int(x) for x in d.get('ids',[])));cid=int(d.get('class_id'))
+   except:return self.err(400,'Danh sách học sinh hoặc lớp không hợp lệ.')
+   if not ids or len(ids)>2000 or any(i<=0 for i in ids):return self.err(400,'Chọn từ 1–2000 học sinh.')
+   with db() as c:
+    if not c.execute('SELECT 1 FROM classes WHERE id=?',(cid,)).fetchone():return self.err(404,'Không tìm thấy lớp đích.')
+    count=c.execute('SELECT COUNT(*) FROM students WHERE id IN ('+','.join('?' for _ in ids)+')',ids).fetchone()[0]
+    if count!=len(ids):return self.err(400,'Một số học sinh không tồn tại.')
+    c.executemany('UPDATE students SET class_id=? WHERE id=?',[(cid,i) for i in ids])
+   return self.sendj(200,{'moved':len(ids)})
+  if p=='/api/students/bulk-delete':
+   try:ids=list(dict.fromkeys(int(x) for x in d.get('ids',[])))
+   except:return self.err(400,'Danh sách học sinh không hợp lệ.')
+   if not ids or len(ids)>2000 or d.get('confirm')!='XOA_HOC_SINH':return self.err(400,'Cần xác nhận xóa học sinh.')
+   with db() as c:
+    count=c.execute('SELECT COUNT(*) FROM students WHERE id IN ('+','.join('?' for _ in ids)+')',ids).fetchone()[0]
+    if count!=len(ids):return self.err(400,'Một số học sinh không tồn tại.')
+    c.executemany('DELETE FROM students WHERE id=?',[(i,) for i in ids])
+   return self.sendj(200,{'deleted':len(ids),'warning':'Dữ liệu điểm danh liên quan đã bị xóa.'})
   if p=='/api/students/import':
    try:
-    cid=int(d.get('class_id'));raw=base64.b64decode(str(d.get('file','')),validate=True)
-    if len(raw)>1200000:return self.err(400,'Tệp Excel tối đa 1,2 MB.')
+    raw=base64.b64decode(str(d.get('file','')),validate=True)
+    if len(raw)>2500000:return self.err(400,'Tệp Excel tối đa 2,5 MB.')
     wb=load_workbook(io.BytesIO(raw),read_only=True,data_only=True)
-    ws=wb.active;entries=[]
-    for row in list(ws.iter_rows(min_row=2,max_col=2,values_only=True))[:300]:
-     code=str(row[0] or '').strip();name=str(row[1] or '').strip()
-     if not code and not name:continue
-     if not re.fullmatch(r'[A-Za-z0-9_.-]{2,40}',code) or not 2<=len(name)<=100:raise ValueError('Mã/họ tên không hợp lệ trong Excel.')
-     entries.append((code,name,cid))
+    ws=wb.active; rows=ws.iter_rows(values_only=True)
+    head=next(rows,None)
+    if not head:raise ValueError('Excel không có tiêu đề')
+    def normalize(x):
+     import unicodedata
+     return ''.join(ch for ch in unicodedata.normalize('NFD',str(x or '').strip().lower()) if unicodedata.category(ch)!='Mn').replace('đ','d').replace('_','').replace(' ','')
+    headers=[normalize(x) for x in head]
+    def find(keys):return next((i for i,h in enumerate(headers) if h in keys),None)
+    ci=find(('mahocsinh','mahs','mahocsinhid','code','studentid','mssv'))
+    ni=find(('hovaten','hoten','tenhocsinh','fullname','name'))
+    li=find(('lop','tenlop','class','classname'))
+    if ci is None or ni is None or li is None:raise ValueError('Cần đủ 3 cột: Mã học sinh, Họ và tên, Lớp.')
+    entries=[];seen=set()
+    for lineno,row in enumerate(rows,2):
+     if lineno>2002:raise ValueError('Tối đa 2000 học sinh/lần.')
+     vals=[str(row[i] or '').strip() if i<len(row) else '' for i in (ci,ni,li)]
+     if not any(vals):continue
+     code,name,cl=vals
+     if not re.fullmatch(r'[A-Za-z0-9_.-]{2,40}',code) or not 2<=len(name)<=100 or not 1<=len(cl)<=100:raise ValueError('Dòng '+str(lineno)+' thiếu hoặc sai mã, họ tên, lớp.')
+     if code in seen:raise ValueError('Mã học sinh trùng trong Excel tại dòng '+str(lineno)+': '+code)
+     seen.add(code);entries.append((code,name,cl))
     wb.close()
-    if not entries:return self.err(400,'Không có học sinh hợp lệ trong Excel.')
-    if len(set(x[0] for x in entries))!=len(entries):return self.err(400,'Mã học sinh trùng trong Excel.')
+    if not entries:return self.err(400,'Không tìm thấy học sinh trong Excel.')
+    from collections import Counter
+    summary=dict(sorted(Counter(x[2] for x in entries).items()))
+    if d.get('preview') is True:return self.sendj(200,{'preview':True,'total':len(entries),'classes':summary})
+    if d.get('confirm')!='NHAP_TOAN_TRUONG':return self.err(400,'Cần xem trước phân lớp và xác nhận nhập.')
+    created=0;updated=0;classes_created=0
     with db() as c:
-     if not c.execute('SELECT 1 FROM classes WHERE id=?',(cid,)).fetchone():return self.err(404,'Không tìm thấy lớp.')
-     c.executemany('INSERT INTO students(code,name,class_id) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET name=excluded.name,class_id=excluded.class_id',entries)
-    return self.sendj(200,{'imported':len(entries)})
-   except (ValueError,KeyError,TypeError,base64.binascii.Error,sqlite3.Error,Exception) as e:return self.err(400,'Không đọc được Excel. Hãy dùng mẫu xuất từ SmartClassAI, tối đa 300 học sinh.')
+     for cl in summary:
+      if not c.execute('SELECT id FROM classes WHERE name=?',(cl,)).fetchone():
+       grade=''.join(ch for ch in cl if ch.isdigit())[:2]
+       c.execute('INSERT INTO classes(name,grade) VALUES(?,?)',(cl,grade));classes_created+=1
+     classids={r['name']:r['id'] for r in c.execute('SELECT id,name FROM classes')}
+     for code,name,cl in entries:
+      old=c.execute('SELECT id FROM students WHERE code=?',(code,)).fetchone()
+      c.execute('INSERT INTO students(code,name,class_id) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET name=excluded.name,class_id=excluded.class_id',(code,name,classids[cl]))
+      if old:updated+=1
+      else:created+=1
+    return self.sendj(200,{'imported':len(entries),'created':created,'updated':updated,'classes_created':classes_created,'classes':summary})
+   except Exception as e:return self.err(400,'Không đọc được Excel: '+str(e)[:180])
   if p=='/api/demo/multisubject':
    # Teacher-only demo fixture. Never pass demo scores off as genuine learning outcomes.
    sample=[('Toán', '8', 'Đại số', 'Giá trị của 3² là bao nhiêu?', '6', '9', '12', '8', 'B', 'Nhận biết', '3² = 3 × 3 = 9.', 'demo-multisubject'), ('Ngữ văn', '8', 'Tiếng Việt', 'Từ nào sau đây là từ láy?', 'Học sinh', 'Lấp lánh', 'Sách vở', 'Bàn ghế', 'B', 'Nhận biết', 'Lấp lánh là từ láy.', 'demo-multisubject'), ('Tiếng Anh', '8', 'Ngữ pháp', 'Choose the correct form: She ___ to school every day.', 'go', 'goes', 'going', 'gone', 'B', 'Nhận biết', 'She goes: ngôi thứ ba số ít ở hiện tại đơn.', 'demo-multisubject'), ('Vật lí', '8', 'Chuyển động', 'Đơn vị SI của vận tốc là gì?', 'm/s', 'kg', 'N', 'J', 'A', 'Nhận biết', 'Vận tốc có đơn vị SI là mét trên giây.', 'demo-multisubject'), ('Hóa học', '8', 'Chất và nguyên tử', 'Kí hiệu hóa học của nguyên tố oxi là gì?', 'Ox', 'O', 'Om', 'H', 'B', 'Nhận biết', 'O là kí hiệu nguyên tố oxi.', 'demo-multisubject'), ('Sinh học', '8', 'Tế bào', 'Bộ phận nào giúp tế bào thực vật quang hợp?', 'Nhân', 'Lục lạp', 'Màng sinh chất', 'Không bào', 'B', 'Nhận biết', 'Lục lạp có diệp lục thực hiện quang hợp.', 'demo-multisubject'), ('Lịch sử', '8', 'Lịch sử Việt Nam', 'Chiến thắng Bạch Đằng năm 938 gắn với ai?', 'Ngô Quyền', 'Trần Hưng Đạo', 'Lê Lợi', 'Quang Trung', 'A', 'Nhận biết', 'Ngô Quyền lãnh đạo chiến thắng Bạch Đằng năm 938.', 'demo-multisubject'), ('Địa lí', '8', 'Địa lí tự nhiên', 'Lớp khí bao quanh Trái Đất được gọi là gì?', 'Thủy quyển', 'Khí quyển', 'Thạch quyển', 'Sinh quyển', 'B', 'Nhận biết', 'Khí quyển là lớp khí bao quanh Trái Đất.', 'demo-multisubject'), ('Giáo dục công dân', '8', 'Quyền và nghĩa vụ', 'Hành vi nào thể hiện tôn trọng người khác?', 'Lắng nghe ý kiến', 'Chế giễu bạn', 'Ngắt lời', 'Lan truyền tin đồn', 'A', 'Nhận biết', 'Lắng nghe là biểu hiện tôn trọng.', 'demo-multisubject'), ('Tin học', '8', 'An toàn số', 'Mật khẩu nào an toàn hơn?', '123456', 'password', 'Một mật khẩu dài và riêng biệt', 'Ngày sinh', 'C', 'Nhận biết', 'Mật khẩu dài, khó đoán và riêng cho từng tài khoản an toàn hơn.', 'demo-multisubject'), ('Công nghệ', '8', 'Thiết kế kĩ thuật', 'Bước đầu của quy trình thiết kế kĩ thuật là gì?', 'Chế tạo hàng loạt', 'Xác định vấn đề', 'Đóng gói sản phẩm', 'Quảng cáo', 'B', 'Nhận biết', 'Cần xác định vấn đề trước khi đề xuất giải pháp.', 'demo-multisubject'), ('Khoa học tự nhiên', '8', 'Kĩ năng thực nghiệm', 'Dụng cụ nào thường dùng để đo nhiệt độ?', 'Thước', 'Cân', 'Nhiệt kế', 'Đồng hồ', 'C', 'Nhận biết', 'Nhiệt kế dùng để đo nhiệt độ.', 'demo-multisubject'), ('Âm nhạc', '8', 'Nhạc lí', 'Một nốt đen thông thường có trường độ bằng mấy nốt móc đơn?', '1', '2', '3', '4', 'B', 'Nhận biết', 'Một nốt đen bằng hai nốt móc đơn.', 'demo-multisubject'), ('Mĩ thuật', '8', 'Màu sắc', 'Ba màu cơ bản truyền thống trong hội họa là gì?', 'Đỏ, vàng, xanh lam', 'Đen, trắng, xám', 'Lục, tím, nâu', 'Cam, lục, tím', 'A', 'Nhận biết', 'Bộ màu cơ bản truyền thống: đỏ, vàng, xanh lam.', 'demo-multisubject'), ('Giáo dục thể chất', '8', 'An toàn luyện tập', 'Trước khi vận động mạnh nên làm gì?', 'Bỏ khởi động', 'Khởi động phù hợp', 'Uống thật nhiều nước một lúc', 'Tập ngay tối đa', 'B', 'Nhận biết', 'Khởi động giúp chuẩn bị cơ thể cho vận động.', 'demo-multisubject'), ('Hoạt động trải nghiệm', '8', 'Kĩ năng hợp tác', 'Khi làm việc nhóm, cách nào giúp hợp tác hiệu quả?', 'Không chia sẻ nhiệm vụ', 'Phân công rõ và lắng nghe', 'Chỉ nghe một người', 'Không phản hồi', 'B', 'Nhận biết', 'Phân công và lắng nghe giúp nhóm hợp tác.', 'demo-multisubject')]
