@@ -11,7 +11,7 @@ class Record(dict):
         return super().__getitem__(key)
 
 def record_factory(cursor):
-    names=[x.name for x in cursor.description]
+    names=[x.name for x in (cursor.description or [])]
     def make(values):
         return Record(zip(names,values))
     return make
