@@ -38,10 +38,17 @@ def throttle(key,limit,window):
 
 def tenant_for(name):
  if not name or name==ADMIN_USER:return None
- return TENANT_DIR/(hashlib.sha256(name.encode('utf8')).hexdigest()+'.sqlite3')
+ digest=hashlib.sha256(name.encode('utf8')).hexdigest()
+ if os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres':return 'teacher_'+digest
+ return TENANT_DIR/(digest+'.sqlite3')
 
 
 def db():
+ if os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres':
+  from pgadapter import Connection
+  url=os.environ.get('DATABASE_URL','')
+  if not url:raise RuntimeError('DATABASE_URL missing for PostgreSQL backend')
+  return Connection(url, TENANT.get() or 'public')
  c=sqlite3.connect(TENANT.get() or DB,timeout=15); c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');return c
 
 def init():
