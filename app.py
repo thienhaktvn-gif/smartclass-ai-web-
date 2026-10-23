@@ -169,7 +169,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/planner-ai.js','/school-admin.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -245,6 +245,25 @@ class H(BaseHTTPRequestHandler):
     if p=='/api/overview':
      data={k:c.execute('SELECT COUNT(*) FROM '+table).fetchone()[0] for k,table in [('questions','questions'),('exams','exams'),('attempts','attempts'),('students','students')]}
      return self.sendj(200,data)
+    if p=='/api/questions/page':
+     from urllib.parse import parse_qs
+     args=parse_qs(urlparse(self.path).query)
+     try:
+      page=max(1,min(100000,int(args.get('page',['1'])[0])))
+      size=max(1,min(100,int(args.get('size',['30'])[0])))
+     except (ValueError,TypeError):return self.err(400,'Trang và số lượng phải là số nguyên.')
+     filters=[];values=[]
+     for key in ('subject','grade'):
+      v=str(args.get(key,[''])[0]).strip()[:100]
+      if v:filters.append(key+'=?');values.append(v)
+     term=str(args.get('q',[''])[0]).strip()[:120]
+     if term:
+      filters.append('(content LIKE ? OR topic LIKE ?)')
+      values.extend(['%'+term+'%','%'+term+'%'])
+     where=' WHERE '+' AND '.join(filters) if filters else ''
+     count=c.execute('SELECT COUNT(*) FROM questions'+where,values).fetchone()[0]
+     items=[dict(row) for row in c.execute('SELECT * FROM questions'+where+' ORDER BY id DESC LIMIT ? OFFSET ?',values+[size,(page-1)*size])]
+     return self.sendj(200,{'items':items,'page':page,'size':size,'total':count,'pages':(count+size-1)//size})
     if p=='/api/questions':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT * FROM questions ORDER BY id DESC LIMIT 500')]})
     if p=='/api/exams':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT e.*, COUNT(eq.question_id) num_questions FROM exams e LEFT JOIN exam_questions eq ON e.id=eq.exam_id GROUP BY e.id ORDER BY e.id DESC')]})
     if p=='/api/attempts':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT a.id,a.exam_id,e.title exam,a.student_name,a.score,a.correct,a.total,a.feedback,a.created FROM attempts a JOIN exams e ON e.id=a.exam_id ORDER BY a.id DESC LIMIT 300')]})
