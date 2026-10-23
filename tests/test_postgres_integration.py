@@ -29,6 +29,12 @@ class PostgreSQLIntegration(unittest.TestCase):
             eid=c.execute("INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,?)",("PG staging exam","Tin học","9",15,0)).lastrowid
             c.execute("INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)",(eid,qid,1))
             self.assertEqual(c.execute("SELECT COUNT(*) FROM exam_questions WHERE exam_id=?",(eid,)).fetchone()[0],1)
+            c.execute("INSERT INTO attendance(student_id,day,status,note) VALUES(?,?,?,?)",(sid,"2026-10-23","present","QA"))
+            c.execute("INSERT INTO attendance(student_id,day,status,note) VALUES(?,?,?,?) ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note",(sid,"2026-10-23","late","QA updated"))
+            self.assertEqual(c.execute("SELECT status FROM attendance WHERE student_id=?",(sid,)).fetchone()[0],"late")
+            attempt=c.execute("INSERT INTO attempts(exam_id,student_name,access_code_hash,form_seed,score,correct,total,answers,feedback) VALUES(?,?,?,?,?,?,?,?,?)",(eid,"QA Student","hash",123,10.0,1,1,'{"1":"A"}',"QA done")).lastrowid
+            self.assertGreater(attempt,0)
+            self.assertEqual(c.execute("SELECT score FROM attempts WHERE id=?",(attempt,)).fetchone()[0],10.0)
             c.execute("INSERT OR IGNORE INTO classes(name,grade) VALUES(?,?)",("PostgreSQL QA Class","9"))
         app.TENANT.set(app.tenant_for("integration_teacher"))
         try:
