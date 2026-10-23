@@ -39,11 +39,15 @@ class Cursor:
 class Connection:
     def __init__(self, url, schema='public'):
         self.conn=psycopg.connect(url,row_factory=record_factory,connect_timeout=10)
-        if schema!='public':
+        # Neon pooler uses transaction pooling: session-level SET can leak between
+        # independent requests. Set a transaction-local schema on EVERY connection.
+        if schema == 'public':
+            self.conn.execute('SET LOCAL search_path TO public')
+        else:
             if not re.fullmatch(r'teacher_[0-9a-f]{64}',schema):
                 raise ValueError('Unsafe tenant identifier')
             self.conn.execute('CREATE SCHEMA IF NOT EXISTS "'+schema+'"')
-            self.conn.execute('SET search_path TO "'+schema+'"')
+            self.conn.execute('SET LOCAL search_path TO "'+schema+'"')
     def execute(self, sql, params=()):
         ignore=bool(re.match(r'^\s*INSERT OR IGNORE INTO',sql,flags=re.I))
         transformed=normalize(sql)
