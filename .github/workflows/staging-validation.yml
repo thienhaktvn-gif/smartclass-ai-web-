@@ -37,6 +37,10 @@ jobs:
         env:
           SANGGIAO_TEST_POSTGRES_URL: postgresql://testuser:testpass@localhost:5432/sanggiao_test
         run: python -m unittest discover -s tests -p 'test_postgres_integration.py' -v
+      - name: HTTP teacher signup test
+        env:
+          SANGGIAO_TEST_POSTGRES_URL: postgresql://testuser:testpass@localhost:5432/sanggiao_test
+        run: python -m unittest discover -s tests -p 'test_signup_http.py' -v
       - name: JavaScript syntax
         run: node --check question-pages.js
       - name: Check route contract
