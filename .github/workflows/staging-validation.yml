@@ -8,6 +8,20 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: sanggiao_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U testuser -d sanggiao_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -19,6 +33,10 @@ jobs:
         run: python -m py_compile app.py
       - name: Database isolation regression
         run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: PostgreSQL integration test
+        env:
+          SANGGIAO_TEST_POSTGRES_URL: postgresql://testuser:testpass@localhost:5432/sanggiao_test
+        run: python -m unittest discover -s tests -p 'test_postgres_integration.py' -v
       - name: JavaScript syntax
         run: node --check question-pages.js
       - name: Check route contract
