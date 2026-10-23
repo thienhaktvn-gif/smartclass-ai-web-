@@ -52,7 +52,7 @@ class Connection:
         if ignore:transformed+=' ON CONFLICT DO NOTHING'
         insert=bool(re.match(r'^INSERT INTO',transformed,flags=re.I))
         # Preserve sqlite Cursor.lastrowid for simple inserts.
-        with_return=insert and not ignore and 'RETURNING' not in transformed.upper()
+        with_return=insert and not ignore and bool(re.match(r'^INSERT INTO\\s+(users|classes|students|questions|exams|attempts|games|lesson_media)\\b',transformed,flags=re.I)) and 'RETURNING' not in transformed.upper()
         if with_return:transformed+=' RETURNING id'
         try:
             cur=self.conn.execute(transformed,params)
