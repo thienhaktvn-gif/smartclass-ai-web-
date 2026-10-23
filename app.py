@@ -171,7 +171,7 @@ class H(BaseHTTPRequestHandler):
  def do_GET(self):
   ss=self.session(); TENANT.set(tenant_for(ss['username']) if ss else None)
   p=urlparse(self.path).path
-  if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/')})
+  if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))})
   if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
@@ -281,7 +281,7 @@ class H(BaseHTTPRequestHandler):
   p=urlparse(self.path).path;d=self.body()
   if d is None:return self.err(400,'Dữ liệu JSON không hợp lệ hoặc quá lớn.')
   if p=='/api/register':
-   if not (os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/')):return self.err(403,'Đăng ký chỉ được bật khi lưu trữ bền vững đã được cấu hình và xác minh.')
+   if not (os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))):return self.err(403,'Đăng ký chỉ được bật khi lưu trữ bền vững đã được cấu hình và xác minh.')
    address=self.client_address[0]
    if not throttle('register:'+address,5,3600):return self.err(429,'Bạn đã tạo quá nhiều yêu cầu đăng ký.')
    name=str(d.get('username','')).strip().lower(); pw=str(d.get('password',''))
