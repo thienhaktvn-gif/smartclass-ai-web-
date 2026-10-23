@@ -38,10 +38,17 @@ def throttle(key,limit,window):
 
 def tenant_for(name):
  if not name or name==ADMIN_USER:return None
- return TENANT_DIR/(hashlib.sha256(name.encode('utf8')).hexdigest()+'.sqlite3')
+ digest=hashlib.sha256(name.encode('utf8')).hexdigest()
+ if os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres':return 'teacher_'+digest
+ return TENANT_DIR/(digest+'.sqlite3')
 
 
 def db():
+ if os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres':
+  from pgadapter import Connection
+  url=os.environ.get('DATABASE_URL','')
+  if not url:raise RuntimeError('DATABASE_URL missing for PostgreSQL backend')
+  return Connection(url, TENANT.get() or 'public')
  c=sqlite3.connect(TENANT.get() or DB,timeout=15); c.row_factory=sqlite3.Row;c.execute('PRAGMA foreign_keys=ON');return c
 
 def init():
@@ -164,12 +171,12 @@ class H(BaseHTTPRequestHandler):
  def do_GET(self):
   ss=self.session(); TENANT.set(tenant_for(ss['username']) if ss else None)
   p=urlparse(self.path).path
-  if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1'})
+  if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))})
   if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
-  if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':'sqlite','persistent':os.getenv('SMARTCLASS_PERSISTENT','0')=='1'})
+  if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':('postgres' if os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' else 'sqlite'),'persistent':(os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.getenv('DATABASE_URL')) or os.getenv('SMARTCLASS_PERSISTENT','0')=='1')})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/planner-ai.js','/school-admin.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
@@ -245,6 +252,25 @@ class H(BaseHTTPRequestHandler):
     if p=='/api/overview':
      data={k:c.execute('SELECT COUNT(*) FROM '+table).fetchone()[0] for k,table in [('questions','questions'),('exams','exams'),('attempts','attempts'),('students','students')]}
      return self.sendj(200,data)
+    if p=='/api/questions/page':
+     from urllib.parse import parse_qs
+     args=parse_qs(urlparse(self.path).query)
+     try:
+      page=max(1,min(100000,int(args.get('page',['1'])[0])))
+      size=max(1,min(100,int(args.get('size',['30'])[0])))
+     except (ValueError,TypeError):return self.err(400,'Trang và số lượng phải là số nguyên.')
+     filters=[];values=[]
+     for key in ('subject','grade'):
+      v=str(args.get(key,[''])[0]).strip()[:100]
+      if v:filters.append(key+'=?');values.append(v)
+     term=str(args.get('q',[''])[0]).strip()[:120]
+     if term:
+      filters.append('(content LIKE ? OR topic LIKE ?)')
+      values.extend(['%'+term+'%','%'+term+'%'])
+     where=' WHERE '+' AND '.join(filters) if filters else ''
+     count=c.execute('SELECT COUNT(*) FROM questions'+where,values).fetchone()[0]
+     items=[dict(row) for row in c.execute('SELECT * FROM questions'+where+' ORDER BY id DESC LIMIT ? OFFSET ?',values+[size,(page-1)*size])]
+     return self.sendj(200,{'items':items,'page':page,'size':size,'total':count,'pages':(count+size-1)//size})
     if p=='/api/questions':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT * FROM questions ORDER BY id DESC LIMIT 500')]})
     if p=='/api/exams':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT e.*, COUNT(eq.question_id) num_questions FROM exams e LEFT JOIN exam_questions eq ON e.id=eq.exam_id GROUP BY e.id ORDER BY e.id DESC')]})
     if p=='/api/attempts':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT a.id,a.exam_id,e.title exam,a.student_name,a.score,a.correct,a.total,a.feedback,a.created FROM attempts a JOIN exams e ON e.id=a.exam_id ORDER BY a.id DESC LIMIT 300')]})
@@ -255,7 +281,7 @@ class H(BaseHTTPRequestHandler):
   p=urlparse(self.path).path;d=self.body()
   if d is None:return self.err(400,'Dữ liệu JSON không hợp lệ hoặc quá lớn.')
   if p=='/api/register':
-   if os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')!='1':return self.err(403,'Đăng ký hiện tạm khóa. Quản trị cần bật SMARTCLASS_ALLOW_REGISTRATION=1 sau khi cấu hình nơi lưu dữ liệu bền vững.')
+   if not (os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))):return self.err(403,'Đăng ký chỉ được bật khi lưu trữ bền vững đã được cấu hình và xác minh.')
    address=self.client_address[0]
    if not throttle('register:'+address,5,3600):return self.err(429,'Bạn đã tạo quá nhiều yêu cầu đăng ký.')
    name=str(d.get('username','')).strip().lower(); pw=str(d.get('password',''))
