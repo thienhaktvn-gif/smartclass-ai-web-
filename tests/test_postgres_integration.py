@@ -15,6 +15,26 @@ class PostgreSQLIntegration(unittest.TestCase):
         cls.app=app
         app.TENANT.set(None)
         app.init()
+    def test_registration_hash_and_tenant_setup(self):
+        app=self.app
+        name="qa_signup_teacher"
+        app.TENANT.set(None)
+        with app.db() as c:
+            if not c.execute("SELECT id FROM users WHERE username=?",(name,)).fetchone():
+                c.execute("INSERT INTO users(username,password_hash,role) VALUES(?,?,?)",(name,app.hashpw("SecureTeacher123"),"teacher"))
+            row=c.execute("SELECT password_hash FROM users WHERE username=?",(name,)).fetchone()
+            self.assertTrue(app.checkpw("SecureTeacher123",row["password_hash"]))
+            self.assertFalse(app.checkpw("WrongTeacher123",row["password_hash"]))
+        app.TENANT.set(app.tenant_for(name))
+        try:
+            app.init()
+            with app.db() as c:
+                self.assertEqual(c.execute("SELECT COUNT(*) FROM classes").fetchone()[0],0)
+                self.assertGreater(c.execute("INSERT INTO classes(name,grade) VALUES(?,?)",("My class","9")).lastrowid,0)
+        finally:
+            app.TENANT.set(None)
+        with app.db() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM classes WHERE name=?",("My class",)).fetchone()[0],0)
     def test_admin_class_student_question_exam_and_tenant(self):
         app=self.app
         app.TENANT.set(None)
