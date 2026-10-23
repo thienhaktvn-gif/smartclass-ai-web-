@@ -1,0 +1,45 @@
+"""PostgreSQL integration tests. Run only against disposable test database."""
+import os
+import unittest
+
+class PostgreSQLIntegration(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not os.environ.get("SANGGIAO_TEST_POSTGRES_URL"):
+            raise unittest.SkipTest("No disposable PostgreSQL test URL")
+        os.environ["SMARTCLASS_STORAGE_BACKEND"]="postgres"
+        os.environ["DATABASE_URL"]=os.environ["SANGGIAO_TEST_POSTGRES_URL"]
+        os.environ["SMARTCLASS_ADMIN_PASSWORD"]="QaDemoPass123!"
+        os.environ["SMARTCLASS_ADMIN_USER"]="giaovien"
+        import app
+        cls.app=app
+        app.TENANT.set(None)
+        app.init()
+    def test_admin_class_student_question_exam_and_tenant(self):
+        app=self.app
+        app.TENANT.set(None)
+        with app.db() as c:
+            row=c.execute("INSERT INTO classes(name,grade) VALUES(?,?)",("PostgreSQL QA Class","9"))
+            cid=row.lastrowid
+            self.assertIsInstance(cid,int)
+            sid=c.execute("INSERT INTO students(code,name,class_id) VALUES(?,?,?)",("PGTEST001","QA Student",cid)).lastrowid
+            self.assertGreater(sid,0)
+            qid=c.execute("INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer) VALUES(?,?,?,?,?,?,?,?,?)",("Tin học","9","QA","QA question","1","2","3","4","A")).lastrowid
+            self.assertGreater(qid,0)
+            eid=c.execute("INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,?)",("PG staging exam","Tin học","9",15,0)).lastrowid
+            c.execute("INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)",(eid,qid,1))
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM exam_questions WHERE exam_id=?",(eid,)).fetchone()[0],1)
+            c.execute("INSERT OR IGNORE INTO classes(name,grade) VALUES(?,?)",("PostgreSQL QA Class","9"))
+        app.TENANT.set(app.tenant_for("integration_teacher"))
+        try:
+            app.init()
+            with app.db() as c:
+                self.assertEqual(c.execute("SELECT COUNT(*) FROM classes").fetchone()[0],0)
+                other=c.execute("INSERT INTO classes(name,grade) VALUES(?,?)",("Private teacher class","8")).lastrowid
+                self.assertGreater(other,0)
+        finally:
+            app.TENANT.set(None)
+        with app.db() as c:
+            self.assertEqual(c.execute("SELECT COUNT(*) FROM classes WHERE name=?",("Private teacher class",)).fetchone()[0],0)
+
+if __name__=="__main__":unittest.main()
