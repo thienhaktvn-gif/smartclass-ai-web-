@@ -292,7 +292,14 @@ class H(BaseHTTPRequestHandler):
    with db() as c:
     if c.execute('SELECT 1 FROM users WHERE username=?',(name,)).fetchone():return self.err(409,'Tên đăng nhập đã được sử dụng.')
     c.execute('INSERT INTO users(username,password_hash,role) VALUES(?,?,?)',(name,hashpw(pw),'teacher'))
-   TENANT.set(tenant_for(name));init();TENANT.set(None)
+   TENANT.set(None)
+   with db() as c:
+    stored=c.execute('SELECT password_hash FROM users WHERE username=?',(name,)).fetchone()
+   if not stored or not checkpw(pw,stored['password_hash']):
+    return self.err(503,'Không thể xác nhận tài khoản đã được lưu. Vui lòng thử lại.')
+   try:
+    TENANT.set(tenant_for(name));init()
+   finally:TENANT.set(None)
    return self.sendj(201,{'ok':True,'message':'Tạo tài khoản thành công. Mời đăng nhập.'})
   if p=='/api/login':
    if not throttle('login:'+self.client_address[0],15,900):return self.err(429,'Có quá nhiều lần thử đăng nhập. Vui lòng thử lại sau.')
