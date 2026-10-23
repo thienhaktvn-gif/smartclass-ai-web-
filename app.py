@@ -296,6 +296,7 @@ class H(BaseHTTPRequestHandler):
     if not e:return self.err(404,'Đề chưa công bố.')
     qs=c.execute('SELECT q.* FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.ord',(eid,)).fetchall()
     seed=int.from_bytes(hmac.new(SECRET.encode(),f'{eid}:{name}:{code}'.encode(),hashlib.sha256).digest()[:8],'big') if SECRET else int.from_bytes(hashlib.sha256(f'{eid}:{name}:{code}'.encode()).digest()[:8],'big')
+    seed = seed & ((1 << 63) - 1)
     forms=shuffled(qs,seed);correct=0;report=[]
     for q in forms:
      selected=str(answers.get(str(q['id']),'')).upper();ok=selected==q['_correct'];correct+=ok
@@ -314,6 +315,7 @@ class H(BaseHTTPRequestHandler):
     if not e:return self.err(404,'Không tìm thấy đề công bố.')
     qs=c.execute('SELECT q.* FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.ord',(eid,)).fetchall()
    seed=int.from_bytes(hmac.new(SECRET.encode(),f'{eid}:{name}:{code}'.encode(),hashlib.sha256).digest()[:8],'big') if SECRET else int.from_bytes(hashlib.sha256(f'{eid}:{name}:{code}'.encode()).digest()[:8],'big')
+   seed = seed & ((1 << 63) - 1)
    form=shuffled(qs,seed)
    return self.sendj(200,{'exam':dict(e),'items':[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]})
   s=self.auth()
