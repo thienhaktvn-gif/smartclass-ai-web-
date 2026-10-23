@@ -1,4 +1,5 @@
 import unittest
+import re
 from pgadapter import normalize
 
 class PgAdapterSmoke(unittest.TestCase):
@@ -11,5 +12,13 @@ class PgAdapterSmoke(unittest.TestCase):
   self.assertEqual(normalize('INSERT OR IGNORE INTO classes(name) VALUES(?)'),'INSERT INTO classes(name) VALUES(%s)')
  def test_timestamp(self):
   self.assertIn('CURRENT_TIMESTAMP::text',normalize('CREATE TABLE t(created TEXT DEFAULT CURRENT_TIMESTAMP)'))
+
+ def test_identity_insert_pattern(self):
+  import re
+  from pathlib import Path
+  source=Path(__file__).resolve().parents[1].joinpath('pgadapter.py').read_text(encoding='utf-8')
+  self.assertIn("RETURNING id",source)
+  pattern=r'^INSERT INTO\s+(users|classes|students|questions|exams|attempts|games|lesson_media)\b'
+  self.assertIsNotNone(re.match(pattern,'INSERT INTO classes(name,grade) VALUES(%s,%s)',flags=re.I))
 
 if __name__=='__main__':unittest.main()
