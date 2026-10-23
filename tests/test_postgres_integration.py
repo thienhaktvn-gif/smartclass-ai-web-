@@ -67,5 +67,7 @@ class PostgreSQLIntegration(unittest.TestCase):
             app.TENANT.set(None)
         with app.db() as c:
             self.assertEqual(c.execute("SELECT COUNT(*) FROM classes WHERE name=?",("Private teacher class",)).fetchone()[0],0)
+            self.assertEqual(c.execute("SELECT current_schema()").fetchone()[0],"public")
+            self.assertIsNotNone(c.execute("SELECT id FROM users WHERE username=?",("giaovien",)).fetchone())
 
 if __name__=="__main__":unittest.main()
