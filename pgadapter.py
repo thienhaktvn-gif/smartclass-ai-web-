@@ -69,9 +69,18 @@ class Connection:
         transformed=normalize(sql)
         if re.match(r'^\s*INSERT OR IGNORE INTO',sql,flags=re.I):
             transformed+=' ON CONFLICT DO NOTHING'
-        try:return self.conn.executemany(transformed,seq)
+        # Psycopg 3 Connection has no executemany(): use a cursor instead.
+        # Keep this in the caller's transaction; do not commit per row.
+        cur=self.conn.cursor()
+        try:
+            cur.executemany(transformed,seq)
+            return Cursor(cur)
         except psycopg.errors.UniqueViolation as error:
+            cur.close()
             raise sqlite3.IntegrityError(str(error)) from error
+        except Exception:
+            cur.close()
+            raise
     def executescript(self, script):
         for statement in script.split(';'):
             if statement.strip():
