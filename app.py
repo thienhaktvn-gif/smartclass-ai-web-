@@ -490,7 +490,13 @@ class H(BaseHTTPRequestHandler):
    with db() as c:
     found=c.execute('SELECT COUNT(*) FROM students WHERE id IN ('+','.join('?' for _ in parsed)+')',[a[0] for a in parsed]).fetchone()[0] if parsed else 0
     if found!=len(set(a[0] for a in parsed)) or found!=len(parsed):return self.err(400,'Có mã học sinh không hợp lệ hoặc trùng.')
-    c.executemany('INSERT INTO attendance(student_id,day,status,note) VALUES(?,?,?,?) ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note',parsed)
+    # Save 50 students in each SQL statement rather than N network round trips.
+    # All batches share one transaction, so failure cannot partially save a class.
+    for offset in range(0,len(parsed),50):
+     batch=parsed[offset:offset+50]
+     values_sql=','.join('(?,?,?,?)' for _ in batch)
+     params=[item for record in batch for item in record]
+     c.execute('INSERT INTO attendance(student_id,day,status,note) VALUES '+values_sql+' ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note',params)
    return self.sendj(200,{'saved':len(parsed),'day':day})
   if p=='/api/classes/rename':
    try:cid=int(d.get('id',0))
