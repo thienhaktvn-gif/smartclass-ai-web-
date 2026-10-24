@@ -9,7 +9,7 @@
   heading.textContent = 'Duyệt ngân hàng câu hỏi có phân trang';
   const filter = document.createElement('input');
   filter.placeholder = 'Tìm kiếm nội dung';
-  filter.setAttribute('aria-label','Tìm câu hỏi');
+  filter.setAttribute('aria-label', 'Tìm câu hỏi');
   const go = document.createElement('button');
   go.textContent = 'Tìm';
   const prev = document.createElement('button');
@@ -17,67 +17,88 @@
   const next = document.createElement('button');
   next.textContent = 'Trang sau';
   const status = document.createElement('p');
-  status.setAttribute('role','status');
+  status.setAttribute('role', 'status');
   const results = document.createElement('div');
   [heading,filter,go,status,results,prev,next].forEach(x => block.appendChild(x));
   root.prepend(block);
-  let page = 1, totalPages = 0, busy = false;
-  let authenticated = false;
-  async function checkSession() {
-    try {
-      const response = await fetch('/api/me', {credentials:'same-origin',cache:'no-store'});
-      if (!response.ok) return false;
-      const data = await response.json();
-      return Boolean(data.user);
-    } catch (_) { return false; }
-  }
-  async function refreshIfVisible() {
-    if (!root.classList.contains('active')) return;
-    authenticated = await checkSession();
-    if (!authenticated) {
-      results.replaceChildren();
-      status.textContent = 'Đăng nhập để xem ngân hàng câu hỏi.';
-      prev.disabled = true;
-      next.disabled = true;
-      return;
-    }
-    await load();
-  }
+
+  let page = 1, totalPages = 0, requestId = 0;
+  let activeController = null;
+  const visible = () => root.classList.contains('active');
+  const setNavigation = () => {
+    prev.disabled = page <= 1;
+    next.disabled = page >= totalPages || totalPages === 0;
+  };
+  const resetBank = (message) => {
+    results.replaceChildren();
+    totalPages = 0;
+    page = 1;
+    status.textContent = message;
+    setNavigation();
+  };
   async function load() {
-    if (busy) return;
-    if (!authenticated) { await refreshIfVisible(); return; }
-    busy = true;
+    if (!visible()) return;
+    const id = ++requestId;
+    if (activeController) activeController.abort();
+    const controller = new AbortController();
+    activeController = controller;
     status.textContent = 'Đang tải...';
+    prev.disabled = next.disabled = true;
     try {
+      // Auth and question data both use the same server-side cookie session.
+      const sessionResponse = await fetch('/api/me', {
+        credentials:'same-origin', cache:'no-store', signal:controller.signal
+      });
+      if (!sessionResponse.ok) throw new Error('Không thể kiểm tra phiên đăng nhập.');
+      const session = await sessionResponse.json();
+      if (!session.user) {
+        resetBank('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+        return;
+      }
       const params = new URLSearchParams({page:String(page), size:'30', q:filter.value.trim()});
-      const response = await fetch('/api/questions/page?' + params, {credentials:'same-origin',cache:'no-store'});
+      const response = await fetch('/api/questions/page?' + params, {
+        credentials:'same-origin', cache:'no-store', signal:controller.signal
+      });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || 'Không thể truy cập');
-      totalPages = data.pages;
+      if (!response.ok) {
+        if (response.status === 401) {
+          resetBank('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+          return;
+        }
+        throw new Error(data.error || ('Không thể tải câu hỏi (HTTP ' + response.status + ')'));
+      }
+      if (id !== requestId || !visible()) return;
+      totalPages = Number(data.pages) || 0;
+      page = Number(data.page) || page;
       status.textContent = 'Tổng ' + data.total + ' câu hỏi, trang ' + page + '/' + Math.max(1,totalPages);
       results.replaceChildren();
-      for (const item of data.items) {
+      for (const item of data.items || []) {
         const div = document.createElement('div');
         div.className = 'item';
         div.textContent = item.subject + ' | Lớp ' + item.grade + ': ' + item.content;
         results.appendChild(div);
       }
-      prev.disabled = page <= 1;
-      next.disabled = page >= totalPages;
+      setNavigation();
     } catch (error) {
+      if (error.name === 'AbortError' || id !== requestId) return;
       status.textContent = 'Lỗi: ' + error.message;
-      if (String(error.message).includes('đăng nhập')) authenticated = false;
+      setNavigation();
+    } finally {
+      if (id === requestId) activeController = null;
     }
-    finally { busy = false; }
   }
   go.onclick = () => { page=1; load(); };
+  filter.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault();page=1;load(); } });
   prev.onclick = () => { if (page > 1) { page--; load(); } };
   next.onclick = () => { if (page < totalPages) { page++; load(); } };
-  // The bank exists in DOM before a teacher signs in. Reload on opening the tab,
-  // not during anonymous page startup; otherwise the first 401 remains stuck.
   const observer = new MutationObserver(() => {
-    if (root.classList.contains('active')) refreshIfVisible();
+    if (visible()) load();
+    else {
+      requestId++;
+      if (activeController) activeController.abort();
+      activeController = null;
+    }
   });
-  observer.observe(root,{attributes:true,attributeFilter:['class']});
-  if (root.classList.contains('active')) refreshIfVisible();
+  observer.observe(root, {attributes:true, attributeFilter:['class']});
+  if (visible()) load();
 })();
