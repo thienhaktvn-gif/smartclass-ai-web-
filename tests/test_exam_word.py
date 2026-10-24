@@ -56,10 +56,11 @@ class WordExamTest(unittest.TestCase):
   conflict=word_bytes(['Câu 1. Nội dung nào đúng?','A. Một','B. Hai','C. Ba','D. Bốn','Đáp án: A','ĐÁP ÁN','1.B'])
   with self.assertRaisesRegex(ValueError,'mâu thuẫn'):parse_word(conflict)
  def test_reject_drawing_and_tables(self):
-  from PIL import Image
+  import base64
   from tempfile import TemporaryDirectory
   with TemporaryDirectory() as path:
-   file=path+'/tiny.png';Image.new('RGB',(2,2)).save(file)
+   file=path+'/tiny.png'
+   with open(file,'wb') as out:out.write(base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a7mYAAAAASUVORK5CYII='))
    d=Document();d.add_paragraph('Câu 1. Hình nào đúng?');d.add_picture(file,width=Inches(1))
    b=io.BytesIO();d.save(b)
    with self.assertRaisesRegex(ValueError,'hình ảnh'):parse_word(b.getvalue())
