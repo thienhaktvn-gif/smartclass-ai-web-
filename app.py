@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from http.cookies import SimpleCookie
 from datetime import datetime, timezone
 from contextvars import ContextVar
-import time, threading
+import time, threading, calendar
 from openpyxl import Workbook, load_workbook
 
 SUBJECT_CATALOG=['Toán', 'Ngữ văn', 'Tiếng Anh', 'Vật lí', 'Hóa học', 'Sinh học', 'Lịch sử', 'Địa lí', 'Giáo dục công dân', 'Tin học', 'Công nghệ', 'Khoa học tự nhiên', 'Âm nhạc', 'Mĩ thuật', 'Giáo dục thể chất', 'Hoạt động trải nghiệm']
@@ -64,7 +64,8 @@ def init():
   CREATE TABLE IF NOT EXISTS attempts(id INTEGER PRIMARY KEY,exam_id INTEGER NOT NULL REFERENCES exams(id),student_name TEXT NOT NULL,access_code_hash TEXT NOT NULL,form_seed INTEGER NOT NULL,score REAL NOT NULL,correct INTEGER NOT NULL,total INTEGER NOT NULL,answers TEXT NOT NULL,feedback TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE INDEX IF NOT EXISTS attempts_exam_idx ON attempts(exam_id);
    CREATE TABLE IF NOT EXISTS attendance(id INTEGER PRIMARY KEY,student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,day TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('present','absent','late','excused')),note TEXT DEFAULT '',UNIQUE(student_id,day));
-   CREATE TABLE IF NOT EXISTS demo_meta(k TEXT PRIMARY KEY,v TEXT NOT NULL);
+   CREATE TABLE IF NOT EXISTS attendance_days(class_id INTEGER NOT NULL,day TEXT NOT NULL,PRIMARY KEY(class_id,day));
+  CREATE TABLE IF NOT EXISTS demo_meta(k TEXT PRIMARY KEY,v TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS games(id INTEGER PRIMARY KEY,title TEXT NOT NULL,topic TEXT NOT NULL,kind TEXT NOT NULL,question_ids TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS lesson_media(id INTEGER PRIMARY KEY,title TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,filename TEXT DEFAULT '',created TEXT DEFAULT CURRENT_TIMESTAMP);''')
   row=c.execute('SELECT id,role FROM users WHERE username=?',(ADMIN_USER,)).fetchone()
@@ -146,6 +147,27 @@ def shuffled(qs,seed):
   opts=[{'label':z,'text':q[z.lower()]} for z in 'ABCD'];rng.shuffle(opts)
   out.append({'id':q['id'],'content':q['content'],'options':[{'key':'ABCD'[i],'text':o['text']} for i,o in enumerate(opts)],'_correct':'ABCD'[next(i for i,o in enumerate(opts) if o['label']==q['answer'])]})
  return out
+
+def attendance_month_report(c,class_id,month):
+ """Count persisted statuses only: missing attendance is not present."""
+ if not re.fullmatch(r'[0-9]{4}-(0[1-9]|1[0-2])',month):raise ValueError('Tháng không hợp lệ (YYYY-MM).')
+ year,mon=map(int,month.split('-'))
+ if year<2000 or year>2100:raise ValueError('Năm báo cáo không hợp lệ.')
+ cl=c.execute('SELECT id,name,grade FROM classes WHERE id=?',(class_id,)).fetchone()
+ if not cl:raise LookupError('Không tìm thấy lớp học.')
+ days=calendar.monthrange(year,mon)[1];start=f'{month}-01';end=f'{month}-{days:02}'
+ students=[dict(r) for r in c.execute('SELECT id,code,name FROM students WHERE class_id=? ORDER BY name,code',(class_id,))]
+ records=[dict(r) for r in c.execute('SELECT a.student_id,a.day,a.status,a.note FROM attendance a JOIN students s ON s.id=a.student_id WHERE s.class_id=? AND a.day BETWEEN ? AND ? ORDER BY a.day,s.name',(class_id,start,end))]
+ saved={r['day'] for r in c.execute('SELECT day FROM attendance_days WHERE class_id=? AND day BETWEEN ? AND ?',(class_id,start,end))}
+ saved.update(r['day'] for r in records)
+ daily={f'{month}-{n:02}':{'day':f'{month}-{n:02}','saved':f'{month}-{n:02}' in saved,'present':0,'absent':0,'late':0,'excused':0,'unrecorded':len(students)} for n in range(1,days+1)}
+ counts={r['id']:{'student_id':r['id'],'code':r['code'],'name':r['name'],'present':0,'absent':0,'late':0,'excused':0,'recorded':0} for r in students}
+ for r in records:
+  day=daily.get(r['day']);student=counts.get(r['student_id'])
+  if not day or not student or r['status'] not in ('present','absent','late','excused'):continue
+  day[r['status']]+=1;day['unrecorded']-=1
+  student[r['status']]+=1;student['recorded']+=1
+ return {'class':dict(cl),'month':month,'days':list(daily.values()),'students':list(counts.values()),'records':records,'saved_days':len(saved)}
 
 class H(BaseHTTPRequestHandler):
  def log_message(self,fmt,*args):print('HTTP:',fmt%args)
@@ -238,6 +260,47 @@ class H(BaseHTTPRequestHandler):
    target=MEDIA/name
    if not target.is_file():return self.err(404,'Không tìm thấy hình ảnh.')
    b=target.read_bytes();self.send_response(200);self.send_header('Content-Type',{'png':'image/png','jpg':'image/jpeg','webp':'image/webp','mp4':'video/mp4'}[name.rsplit('.',1)[1]]);self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','private, no-store');self.end_headers();return self.wfile.write(b)
+  if p=='/api/attendance/report/export':
+   if not self.session():return self.err(401,'Vui lòng đăng nhập giáo viên.')
+   from urllib.parse import parse_qs
+   q=parse_qs(urlparse(self.path).query)
+   try:
+    cid=int(q.get('class_id',[''])[0]);month=q.get('month',[''])[0]
+    with db() as c:report=attendance_month_report(c,cid,month)
+   except (ValueError,LookupError) as exc:return self.err(400,str(exc))
+   wb=Workbook();daily=wb.active;daily.title='Tong hop theo ngay'
+   daily.append(['BÁO CÁO CHUYÊN CẦN',report['class']['name'],'Tháng '+month])
+   daily.append(['Ngày','Tình trạng','Có mặt','Vắng','Đi muộn','Có phép','Chưa ghi nhận'])
+   for item in report['days']:
+    daily.append([item['day'],'Đã lưu' if item['saved'] else 'Chưa điểm danh',item['present'] if item['saved'] else None,item['absent'] if item['saved'] else None,item['late'] if item['saved'] else None,item['excused'] if item['saved'] else None,item['unrecorded'] if item['saved'] else None])
+   individual=wb.create_sheet('Chuyen can hoc sinh')
+   individual.append(['Mã học sinh','Họ tên','Có mặt','Vắng','Đi muộn','Có phép','Số ngày ghi nhận'])
+   # Force student-supplied text to literal Excel cells, never formulas.
+   def safe(value):
+    value=str(value or '')
+    return "'"+value if value.startswith(('=','+','-','@')) else value
+   for student in report['students']:
+    individual.append([safe(student['code']),safe(student['name']),student['present'],student['absent'],student['late'],student['excused'],student['recorded']])
+   detail=wb.create_sheet('Chi tiet diem danh')
+   detail.append(['Ngày','Mã học sinh','Họ tên','Trạng thái','Ghi chú'])
+   names={student['student_id']:student for student in report['students']}
+   labels={'present':'Có mặt','absent':'Vắng','late':'Đi muộn','excused':'Có phép'}
+   for record in report['records']:
+    person=names.get(record['student_id'],{})
+    detail.append([record['day'],safe(person.get('code','')),safe(person.get('name','')),labels.get(record['status'],record['status']),safe(record['note'])])
+   from openpyxl.styles import Font,PatternFill
+   for sheet,header in ((daily,2),(individual,1),(detail,1)):
+    sheet.freeze_panes=f'A{header+1}'
+    sheet.auto_filter.ref=f'A{header}:{sheet.cell(row=max(header,sheet.max_row),column=sheet.max_column).coordinate}'
+    for cell in sheet[header]:
+     cell.font=Font(bold=True,color='FFFFFF');cell.fill=PatternFill('solid',fgColor='274690')
+    for column in sheet.columns:
+     cells=list(column)
+     sheet.column_dimensions[cells[0].column_letter].width=min(44,max(16,max(len(str(cell.value or '')) for cell in cells[:100])+3))
+   output=io.BytesIO();wb.save(output);data=output.getvalue()
+   self.send_response(200);self.send_header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+   self.send_header('Content-Disposition',f'attachment; filename="Chuyen_can_lop_{cid}_{month}.xlsx"')
+   self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','private, no-store');self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(data)
   if p=='/api/students/export':
    if not self.session():return self.err(401,'Vui lòng đăng nhập giáo viên.')
    query=urlparse(self.path).query
@@ -264,6 +327,13 @@ class H(BaseHTTPRequestHandler):
      return self.sendj(200,{'items':[dict(x) for x in rows]})
     if p=='/api/students':
      return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT s.*,c.name class_name FROM students s LEFT JOIN classes c ON c.id=s.class_id ORDER BY c.name,s.name')]})
+    if p=='/api/attendance/report':
+     from urllib.parse import parse_qs
+     q=parse_qs(urlparse(self.path).query)
+     try:report=attendance_month_report(c,int(q.get('class_id',[''])[0]),q.get('month',[''])[0])
+     except (ValueError,LookupError) as exc:return self.err(400,str(exc))
+     report.pop('records')
+     return self.sendj(200,report)
     if p=='/api/attendance':
      from urllib.parse import parse_qs
      q=parse_qs(urlparse(self.path).query)
@@ -559,6 +629,14 @@ class H(BaseHTTPRequestHandler):
      values_sql=','.join('(?,?,?,?)' for _ in batch)
      params=[item for record in batch for item in record]
      c.execute('INSERT INTO attendance(student_id,day,status,note) VALUES '+values_sql+' ON CONFLICT(student_id,day) DO UPDATE SET status=excluded.status,note=excluded.note',params)
+    if parsed:
+     ids=[row[0] for row in parsed];class_ids=set()
+     for offset in range(0,len(ids),300):
+      chunk=ids[offset:offset+300]
+      for row in c.execute('SELECT DISTINCT class_id FROM students WHERE id IN ('+','.join('?' for _ in chunk)+')',chunk):
+       if row['class_id'] is not None:class_ids.add(row['class_id'])
+     for cid in class_ids:
+      c.execute('INSERT INTO attendance_days(class_id,day) VALUES(?,?) ON CONFLICT(class_id,day) DO NOTHING',(cid,day))
    return self.sendj(200,{'saved':len(parsed),'day':day})
   if p=='/api/classes/rename':
    try:cid=int(d.get('id',0))
