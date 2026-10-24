@@ -28,7 +28,7 @@ function render(){
 }
 $id('wordExamRead').addEventListener('click',async()=>{
  const file=$id('wordExamFile').files[0];
- reviewed=[];button.disabled=true;preview.replaceChildren();
+ reviewed=[];button.disabled=true;document.getElementById('wordExamPublish').disabled=true;preview.replaceChildren();
  if(!file){message('Hãy chọn file Word .docx trước.');return}
  if(!file.name.toLowerCase().endsWith('.docx')){message('Chỉ hỗ trợ tệp .docx. Vui lòng lưu Word dưới định dạng .docx.');return}
  if(file.size>1700000){message('Để tải an toàn, file Word cần nhỏ hơn 1,7 MB.');return}
@@ -38,7 +38,7 @@ $id('wordExamRead').addEventListener('click',async()=>{
   const bytes=new Uint8Array(raw);let binary='';
   for(let i=0;i<bytes.length;i+=8192){binary+=String.fromCharCode(...bytes.subarray(i,i+8192))}
   const result=await api('exams/word/preview',{filename:file.name,file:btoa(binary)});
-  reviewed=result.items;render();button.disabled=false;
+  reviewed=result.items;render();button.disabled=false;document.getElementById('wordExamPublish').disabled=false;
   message('Đã nhận dạng '+result.count+' câu. Hãy đọc và sửa nội dung/đáp án nếu cần. Chỉ nhấn Xuất khi chắc chắn mọi đáp án đúng.');
  }catch(error){message('Không nhập được đề Word: '+error.message)}
  finally{readButton.disabled=false}
@@ -61,6 +61,20 @@ $id('wordExamExport').addEventListener('click',async()=>{
   setTimeout(()=>URL.revokeObjectURL(url),12000);
   message('Đã xuất '+count+' mã đề Word (001–'+String(count).padStart(3,'0')+') và Bang_dap_an.docx. Tải ZIP, giải nén, kiểm tra bản in trước khi dùng.');
  }catch(error){message('Không thể xuất đề: '+error.message)}
+ finally{button.disabled=false}
+});
+
+document.getElementById('wordExamPublish').addEventListener('click',async()=>{
+ if(!reviewed.length){message('Hãy nhập đề Word và kiểm tra đáp án trước khi lưu.');return}
+ const title=$id('wordExamTitle').value.trim();
+ if(title.length<3){message('Nhập tên đề tối thiểu 3 ký tự.');return}
+ if(!confirm('Xác nhận các câu và đáp án đã được giáo viên duyệt? Đề sẽ được lưu vào ngân hàng và công bố cho thi trực tuyến.'))return;
+ const button=document.getElementById('wordExamPublish');button.disabled=true;
+ try{
+  const r=await api('exams/word/publish',{title,items:reviewed,subject:$id('wordOnlineSubject').value.trim(),grade:$id('wordOnlineGrade').value.trim(),duration:Number($id('wordOnlineDuration').value)});
+  message('Đã lưu '+r.count+' câu hỏi và đề #'+r.id+'. Vào danh sách Đề đã tạo, bấm Cấp mã dự thi để giao cho học sinh.');
+  await refresh();renderExams();renderExamPick();
+ }catch(error){message('Không lưu được đề trực tuyến: '+error.message)}
  finally{button.disabled=false}
 });
 })();

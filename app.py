@@ -55,6 +55,8 @@ def init():
  with db() as c:
   c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS login_sessions(token_hash TEXT PRIMARY KEY,username TEXT NOT NULL,csrf TEXT NOT NULL,expires INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS online_exam_links(code_hash TEXT PRIMARY KEY,teacher_username TEXT NOT NULL,exam_id INTEGER NOT NULL,active INTEGER NOT NULL DEFAULT 1,created TEXT DEFAULT CURRENT_TIMESTAMP);
+  CREATE TABLE IF NOT EXISTS online_exam_sessions(token_hash TEXT PRIMARY KEY,code_hash TEXT NOT NULL,teacher_username TEXT NOT NULL,exam_id INTEGER NOT NULL,student_name TEXT NOT NULL,student_code TEXT NOT NULL,seed INTEGER NOT NULL,expires INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS password_reset_required(username TEXT PRIMARY KEY, issued INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS classes(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,grade TEXT DEFAULT '');
   CREATE TABLE IF NOT EXISTS students(id INTEGER PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,class_id INTEGER REFERENCES classes(id));
@@ -63,6 +65,7 @@ def init():
   CREATE TABLE IF NOT EXISTS exam_questions(exam_id INTEGER REFERENCES exams(id) ON DELETE CASCADE,question_id INTEGER REFERENCES questions(id),ord INTEGER NOT NULL,PRIMARY KEY(exam_id,question_id));
   CREATE TABLE IF NOT EXISTS attempts(id INTEGER PRIMARY KEY,exam_id INTEGER NOT NULL REFERENCES exams(id),student_name TEXT NOT NULL,access_code_hash TEXT NOT NULL,form_seed INTEGER NOT NULL,score REAL NOT NULL,correct INTEGER NOT NULL,total INTEGER NOT NULL,answers TEXT NOT NULL,feedback TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE INDEX IF NOT EXISTS attempts_exam_idx ON attempts(exam_id);
+  CREATE TABLE IF NOT EXISTS online_exam_results(attempt_id INTEGER PRIMARY KEY,session_hash TEXT UNIQUE NOT NULL,exam_id INTEGER NOT NULL,student_code TEXT NOT NULL,submitted TEXT DEFAULT CURRENT_TIMESTAMP,UNIQUE(exam_id,student_code));
    CREATE TABLE IF NOT EXISTS attendance(id INTEGER PRIMARY KEY,student_id INTEGER NOT NULL REFERENCES students(id) ON DELETE CASCADE,day TEXT NOT NULL,status TEXT NOT NULL CHECK(status IN ('present','absent','late','excused')),note TEXT DEFAULT '',UNIQUE(student_id,day));
    CREATE TABLE IF NOT EXISTS attendance_days(class_id INTEGER NOT NULL,day TEXT NOT NULL,PRIMARY KEY(class_id,day));
   CREATE TABLE IF NOT EXISTS demo_meta(k TEXT PRIMARY KEY,v TEXT NOT NULL);
@@ -213,7 +216,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':('postgres' if os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' else 'sqlite'),'persistent':(os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.getenv('DATABASE_URL')) or os.getenv('SMARTCLASS_PERSISTENT','0')=='1')})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games','/attendanceReport','/exams'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/admin.js','/attendance-report.js','/word-exam.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/admin.js','/attendance-report.js','/word-exam.js','/online-exam-ui.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session()
@@ -260,6 +263,25 @@ class H(BaseHTTPRequestHandler):
    target=MEDIA/name
    if not target.is_file():return self.err(404,'Không tìm thấy hình ảnh.')
    b=target.read_bytes();self.send_response(200);self.send_header('Content-Type',{'png':'image/png','jpg':'image/jpeg','webp':'image/webp','mp4':'video/mp4'}[name.rsplit('.',1)[1]]);self.send_header('Content-Length',str(len(b)));self.send_header('Cache-Control','private, no-store');self.end_headers();return self.wfile.write(b)
+  if p=='/api/online/results/export':
+   if not ss:return self.err(401,'Cần đăng nhập giáo viên.')
+   from online_exam import make_results_export,online_result_rows
+   from urllib.parse import parse_qs
+   q=parse_qs(urlparse(self.path).query)
+   try:exam_id=int(q.get('exam_id',['0'])[0])
+   except:return self.err(400,'Mã đề không hợp lệ.')
+   kind=q.get('format',['xlsx'])[0]
+   if kind not in ('xlsx','docx'):return self.err(400,'Chỉ hỗ trợ Excel hoặc Word.')
+   with db() as c:
+    exam=c.execute('SELECT id,title,subject,grade FROM exams WHERE id=?',(exam_id,)).fetchone()
+    if not exam:return self.err(404,'Không tìm thấy đề.')
+    rows=online_result_rows(c,exam_id)
+   data=make_results_export(dict(exam),rows,kind)
+   mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if kind=='xlsx' else 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+   self.send_response(200);self.send_header('Content-Type',mime)
+   self.send_header('Content-Disposition',f'attachment; filename="Bang_diem_de_{exam_id}.{kind}"')
+   self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','private, no-store')
+   self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(data)
   if p=='/api/attendance/report/export':
    if not self.session():return self.err(401,'Vui lòng đăng nhập giáo viên.')
    from urllib.parse import parse_qs
@@ -369,6 +391,15 @@ class H(BaseHTTPRequestHandler):
      return self.sendj(200,{'items':items,'page':page,'size':size,'total':count,'pages':(count+size-1)//size})
     if p=='/api/questions':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT * FROM questions ORDER BY id DESC LIMIT 500')]})
     if p=='/api/exams':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT e.*, COUNT(eq.question_id) num_questions FROM exams e LEFT JOIN exam_questions eq ON e.id=eq.exam_id GROUP BY e.id ORDER BY e.id DESC')]})
+    if p=='/api/online/results':
+     from online_exam import online_result_rows
+     from urllib.parse import parse_qs
+     q=parse_qs(urlparse(self.path).query)
+     try:exam_id=int(q.get('exam_id',['0'])[0])
+     except:return self.err(400,'Mã đề không hợp lệ.')
+     exam=c.execute('SELECT id,title FROM exams WHERE id=?',(exam_id,)).fetchone()
+     if not exam:return self.err(404,'Không tìm thấy đề kiểm tra.')
+     return self.sendj(200,{'exam':dict(exam),'items':online_result_rows(c,exam_id)})
     if p=='/api/attempts':return self.sendj(200,{'items':[dict(x) for x in c.execute('SELECT a.id,a.exam_id,e.title exam,a.student_name,a.score,a.correct,a.total,a.feedback,a.created FROM attempts a JOIN exams e ON e.id=a.exam_id ORDER BY a.id DESC LIMIT 300')]})
    return self.err(404,'Không tồn tại API.')
   return self.err(404,'Không tìm thấy trang.')
@@ -468,6 +499,77 @@ class H(BaseHTTPRequestHandler):
     q=c.execute('SELECT answer,explanation FROM questions WHERE id=?',(qid,)).fetchone()
     if not q:return self.err(404,'Câu hỏi không tồn tại.')
    return self.sendj(200,{'correct':choice==q['answer'],'answer':q['answer'],'explanation':q['explanation']})
+  if p=='/api/online/start':
+   from online_exam import digest,make_form,valid_student
+   code=str(d.get('exam_code','')).strip().upper()
+   name=str(d.get('student_name','')).strip()
+   student_code=str(d.get('student_code','')).strip().upper()
+   if not valid_student(name,student_code):return self.err(400,'Cần họ tên (2–80 ký tự) và mã học sinh (3–32 ký tự chữ, số, gạch ngang).')
+   if not re.fullmatch(r'[A-Z2-9]{12,24}',code):return self.err(400,'Mã dự thi không hợp lệ.')
+   if not throttle('online-start:'+self.client_address[0],300,900):return self.err(429,'Quá nhiều lần yêu cầu bắt đầu bài thi.')
+   context=TENANT.set(None)
+   try:
+    with db() as c:link=c.execute('SELECT teacher_username,exam_id FROM online_exam_links WHERE code_hash=? AND active=1',(digest(code),)).fetchone()
+   finally:TENANT.reset(context)
+   if not link:return self.err(404,'Không tìm thấy mã dự thi đang hoạt động.')
+   teacher=link['teacher_username'];exam_id=link['exam_id']
+   tenant=TENANT.set(tenant_for(teacher))
+   try:
+    with db() as c:
+     exam=c.execute('SELECT id,title,subject,grade,duration,published FROM exams WHERE id=?',(exam_id,)).fetchone()
+     if not exam or not exam['published']:return self.err(404,'Đề chưa được công bố.')
+     if c.execute('SELECT 1 FROM online_exam_results WHERE exam_id=? AND student_code=?',(exam_id,student_code)).fetchone():
+      return self.err(409,'Mã học sinh này đã nộp bài. Liên hệ giáo viên nếu cần kiểm tra lại.')
+     questions=c.execute('SELECT q.* FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.ord',(exam_id,)).fetchall()
+   finally:TENANT.reset(tenant)
+   if not questions:return self.err(400,'Đề chưa có câu hỏi.')
+   seed=secrets.randbits(63);token=secrets.token_urlsafe(32)
+   expire=int(time.time())+int(exam['duration'])*60
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     c.execute('INSERT INTO online_exam_sessions(token_hash,code_hash,teacher_username,exam_id,student_name,student_code,seed,expires) VALUES(?,?,?,?,?,?,?,?)',(digest(token),digest(code),teacher,exam_id,name,student_code,seed,expire))
+   finally:TENANT.reset(context)
+   form=make_form(questions,seed)
+   safe_form=[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]
+   return self.sendj(200,{'attempt_token':token,'exam':{k:exam[k] for k in ('id','title','subject','grade','duration')},'expires':expire,'items':safe_form})
+  if p=='/api/online/submit':
+   from online_exam import digest,make_form,score_form
+   token=str(d.get('attempt_token',''))
+   answers=d.get('answers',{})
+   if not re.fullmatch(r'[A-Za-z0-9_-]{30,128}',token) or not isinstance(answers,dict):return self.err(400,'Phiên làm bài hoặc câu trả lời không hợp lệ.')
+   context=TENANT.set(None)
+   try:
+    with db() as c:run=c.execute('SELECT * FROM online_exam_sessions WHERE token_hash=?',(digest(token),)).fetchone()
+    if run:
+     with db() as c:link=c.execute('SELECT active FROM online_exam_links WHERE code_hash=?',(run['code_hash'],)).fetchone()
+    else:link=None
+   finally:TENANT.reset(context)
+   if not run or not link:return self.err(404,'Phiên làm bài không tồn tại hoặc mã đã bị xóa.')
+   # Re-issuing a teacher code blocks new starts, but must not discard exams already underway.
+   if int(time.time())>int(run['expires'])+30:return self.err(403,'Đã hết thời gian nộp bài.')
+   tenant=TENANT.set(tenant_for(run['teacher_username']))
+   try:
+    with db() as c:
+     exam=c.execute('SELECT published FROM exams WHERE id=?',(run['exam_id'],)).fetchone()
+     if not exam or not exam['published']:return self.err(404,'Đề đã đóng.')
+     questions=c.execute('SELECT q.* FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.ord',(run['exam_id'],)).fetchall()
+     forms=make_form(questions,int(run['seed']))
+     outcome=score_form(forms,answers)
+     score=outcome['score'];correct=outcome['correct'];total=len(forms)
+     feedback=('Hoàn thành rất tốt.' if score>=8 else 'Đã đạt kiến thức cơ bản.' if score>=5 else 'Cần ôn tập thêm các nội dung chưa vững.')
+     if c.execute('SELECT 1 FROM online_exam_results WHERE exam_id=? AND student_code=?',(run['exam_id'],run['student_code'])).fetchone():
+      return self.err(409,'Mã học sinh đã có bài nộp cho đề này.')
+     cur=c.execute('INSERT INTO attempts(exam_id,student_name,access_code_hash,form_seed,score,correct,total,answers,feedback) VALUES(?,?,?,?,?,?,?,?,?)',(run['exam_id'],run['student_name'],digest(run['code_hash']),run['seed'],score,correct,total,json.dumps(answers,ensure_ascii=False),feedback))
+     c.execute('INSERT INTO online_exam_results(attempt_id,session_hash,exam_id,student_code) VALUES(?,?,?,?)',(cur.lastrowid,digest(token),run['exam_id'],run['student_code']))
+   except sqlite3.IntegrityError:
+    return self.err(409,'Bài thi đã được nộp hoặc mã học sinh đã có kết quả.')
+   finally:TENANT.reset(tenant)
+   context=TENANT.set(None)
+   try:
+    with db() as c:c.execute('DELETE FROM online_exam_sessions WHERE token_hash=?',(digest(token),))
+   finally:TENANT.reset(context)
+   return self.sendj(200,{'score':score,'correct':correct,'total':total,'feedback':feedback,'message':'Đã lưu bài làm và tự động chấm điểm.'})
   if p=='/api/exams/submit':
    try:eid=int(d.get('exam_id')); name=str(d.get('student_name','')).strip()[:80];code=str(d.get('access_code','')).strip();answers=d.get('answers',{})
    except:return self.err(400,'Thông tin bài làm không hợp lệ.')
@@ -501,6 +603,40 @@ class H(BaseHTTPRequestHandler):
    return self.sendj(200,{'exam':dict(e),'items':[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]})
   s=self.auth()
   if not s:return
+  if p=='/api/online/share':
+   from online_exam import digest,create_exam_code
+   try:exam_id=int(d.get('exam_id'))
+   except:return self.err(400,'Mã đề không hợp lệ.')
+   with db() as c:
+    e=c.execute('SELECT id,published FROM exams WHERE id=?',(exam_id,)).fetchone()
+    if not e or not e['published']:return self.err(404,'Hãy công bố đề trước khi cấp mã dự thi.')
+    if c.execute('SELECT COUNT(*) FROM exam_questions WHERE exam_id=?',(exam_id,)).fetchone()[0]<1:return self.err(400,'Đề chưa có câu hỏi.')
+   code=create_exam_code()
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     c.execute('UPDATE online_exam_links SET active=0 WHERE teacher_username=? AND exam_id=?',(s['username'],exam_id))
+     c.execute('INSERT INTO online_exam_links(code_hash,teacher_username,exam_id) VALUES(?,?,?)',(digest(code),s['username'],exam_id))
+   finally:TENANT.reset(context)
+   return self.sendj(200,{'exam_id':exam_id,'exam_code':code,'url':PUBLIC_URL.rstrip('/')+'/student' if PUBLIC_URL else '/student','message':'Mã mới chỉ hiện một lần. Cấp riêng cho học sinh; mã cũ đã hết hiệu lực.'})
+  if p=='/api/exams/word/publish':
+   from exam_word import validate_questions
+   try:
+    questions=validate_questions(d.get('items'))
+    title=str(d.get('title','')).strip()
+    duration=int(d.get('duration',45))
+    subject=str(d.get('subject','Tin học')).strip()[:80]
+    grade=str(d.get('grade','9')).strip()[:20]
+    if not 3<=len(title)<=130 or not 1<=duration<=240 or len(questions)>100:raise ValueError('Tên đề, thời lượng hoặc số câu không hợp lệ (tối đa 100 câu).')
+   except (ValueError,TypeError) as exc:return self.err(400,str(exc))
+   with db() as c:
+    ex=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,?)',(title,subject,grade,duration,1))
+    eid=ex.lastrowid
+    for i,q in enumerate(questions):
+     option=q['options']
+     cur=c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,origin) VALUES(?,?,?,?,?,?,?,?,?,?)',(subject,grade,'Nhập từ Word',q['content'],option['A'],option['B'],option['C'],option['D'],q['answer'],'word-import'))
+     c.execute('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',(eid,cur.lastrowid,i))
+   return self.sendj(201,{'id':eid,'count':len(questions),'message':'Đã lưu đề Word vào hệ thống và công bố để học sinh làm trực tuyến.'})
   if p=='/api/exams/word/preview':
    from exam_word import parse_word
    try:
