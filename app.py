@@ -22,7 +22,7 @@ IMAGE_MODEL=os.environ.get('GEMINI_IMAGE_MODEL','gemini-nano-banana-2.1')
 VIDEO_MODEL=os.environ.get('GEMINI_VIDEO_MODEL','gemini-omni-1.1-flash')
 MEDIA=ROOT/'media';MEDIA.mkdir(exist_ok=True)
 PUBLIC_URL=os.environ.get('PUBLIC_URL','')
-SESSIONS={}
+SESSION_LIFETIME=43200
 TENANT=ContextVar('smartclass_tenant', default=None)
 TENANT_DIR=DB.parent/'smartclass_teachers'
 TENANT_DIR.mkdir(parents=True,exist_ok=True)
@@ -54,6 +54,7 @@ def db():
 def init():
  with db() as c:
   c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
+  CREATE TABLE IF NOT EXISTS login_sessions(token_hash TEXT PRIMARY KEY,username TEXT NOT NULL,csrf TEXT NOT NULL,expires INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS classes(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,grade TEXT DEFAULT '');
   CREATE TABLE IF NOT EXISTS students(id INTEGER PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,class_id INTEGER REFERENCES classes(id));
   CREATE TABLE IF NOT EXISTS questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,topic TEXT NOT NULL,content TEXT NOT NULL,a TEXT NOT NULL,b TEXT NOT NULL,c TEXT NOT NULL,d TEXT NOT NULL,answer TEXT NOT NULL CHECK(answer IN ('A','B','C','D')),difficulty TEXT NOT NULL DEFAULT 'Nhận biết',explanation TEXT NOT NULL DEFAULT '',origin TEXT DEFAULT 'manual');
@@ -159,10 +160,19 @@ class H(BaseHTTPRequestHandler):
   except:return None
  def session(self):
   try:
-   c=SimpleCookie();c.load(self.headers.get('Cookie',''));tok=c['scsession'].value
-   rec=SESSIONS.get(tok)
-   if rec and rec['created']+43200>datetime.now(timezone.utc).timestamp():return rec
-  except:pass
+   cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
+   raw=cookie['scsession'].value
+   if not re.fullmatch(r'[A-Za-z0-9_-]{30,128}',raw):return None
+   token_hash=hashlib.sha256(raw.encode('ascii')).hexdigest()
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     row=c.execute('SELECT username,csrf,expires FROM login_sessions WHERE token_hash=?',(token_hash,)).fetchone()
+   finally:TENANT.reset(context)
+   if row and int(row['expires'])>int(time.time()):
+    return {'username':row['username'],'csrf':row['csrf']}
+  except (KeyError,ValueError,sqlite3.Error):
+   return None
   return None
  def auth(self):
   u=self.session()
@@ -307,7 +317,13 @@ class H(BaseHTTPRequestHandler):
    TENANT.set(None)
    with db() as c:u=c.execute('SELECT * FROM users WHERE username=?',(name,)).fetchone()
    if not u or not checkpw(pw,u['password_hash']):return self.err(401,'Sai tài khoản hoặc mật khẩu.')
-   tok=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(24);SESSIONS[tok]={'username':name,'csrf':csrf,'created':datetime.now(timezone.utc).timestamp()}
+   tok=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(24)
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     c.execute('DELETE FROM login_sessions WHERE expires<=?',(int(time.time()),))
+     c.execute('INSERT INTO login_sessions(token_hash,username,csrf,expires) VALUES(?,?,?,?)',(hashlib.sha256(tok.encode('ascii')).hexdigest(),name,csrf,int(time.time())+SESSION_LIFETIME))
+   finally:TENANT.reset(context)
    secure='; Secure' if self.headers.get('X-Forwarded-Proto','')=='https' or PUBLIC_URL.startswith('https://') else ''
    return self.sendj(200,{'user':name,'csrf':csrf},{'Set-Cookie':f'scsession={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200{secure}'})
   if p=='/api/games/answer':
@@ -375,7 +391,12 @@ class H(BaseHTTPRequestHandler):
     return self.err(502,str(exc) if isinstance(exc,RuntimeError) else 'Phản hồi Gemini chưa hợp lệ.')
   if p=='/api/logout':
    cookie=SimpleCookie();cookie.load(self.headers.get('Cookie',''))
-   if 'scsession' in cookie:SESSIONS.pop(cookie['scsession'].value,None)
+   if 'scsession' in cookie:
+    context=TENANT.set(None)
+    try:
+     with db() as c:
+      c.execute('DELETE FROM login_sessions WHERE token_hash=?',(hashlib.sha256(cookie['scsession'].value.encode()).hexdigest(),))
+    finally:TENANT.reset(context)
    return self.sendj(200,{'ok':True},{'Set-Cookie':'scsession=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/'})
   if p=='/api/planner/ai-draft':
    # Teacher-only; the do_POST authentication/CSRF guard runs before this block.
