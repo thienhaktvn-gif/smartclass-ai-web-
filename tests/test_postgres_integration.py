@@ -70,4 +70,28 @@ class PostgreSQLIntegration(unittest.TestCase):
             self.assertEqual(c.execute("SELECT current_schema()").fetchone()[0],"public")
             self.assertIsNotNone(c.execute("SELECT id FROM users WHERE username=?",("giaovien",)).fetchone())
 
+    def test_exam_links_and_essays_batch(self):
+        """Exercise the exact Psycopg executemany path that returned HTTP 502."""
+        import uuid
+        from bank16 import build_exam
+        app=self.app
+        subject="Toán"
+        qs,essays=build_exam(subject)
+        self.assertEqual((len(qs),len(essays)),(16,3))
+        title="PG batch regression "+uuid.uuid4().hex
+        app.TENANT.set(None)
+        with app.db() as conn:
+            conn.execute("CREATE TABLE IF NOT EXISTS essay_questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,exam_id INTEGER,content TEXT NOT NULL,origin TEXT NOT NULL)")
+            qids=[]
+            for q in qs:
+                cur=conn.execute("INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",tuple(q[k] for k in ("subject","grade","topic","content","a","b","c","d","answer","difficulty","explanation","origin")))
+                qids.append(cur.lastrowid)
+            eid=conn.execute("INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,0)",(title,subject,"8",45)).lastrowid
+            conn.executemany("INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)",[(eid,qid,i) for i,qid in enumerate(qids)])
+            conn.executemany("INSERT INTO essay_questions(subject,grade,exam_id,content,origin) VALUES(?,?,?,?,?)",[(subject,"8",eid,e,"demo-16x19") for e in essays])
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM exam_questions WHERE exam_id=?",(eid,)).fetchone()[0],16)
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM essay_questions WHERE exam_id=?",(eid,)).fetchone()[0],3)
+        with app.db() as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM exam_questions WHERE exam_id=?",(eid,)).fetchone()[0],16)
+
 if __name__=="__main__":unittest.main()
