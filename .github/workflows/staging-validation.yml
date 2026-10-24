@@ -50,6 +50,7 @@ jobs:
           node --check admin.js
           node --check attendance-report.js
           node --check word-exam.js
+          node --check online-exam-ui.js
           node --check app.js
           node --check school-admin.js
       - name: Check registration form matching
