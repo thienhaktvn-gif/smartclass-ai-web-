@@ -106,8 +106,8 @@ class AttendanceBulkTest(unittest.TestCase):
   self.assertEqual(book.worksheets[0]['B26'].value,'Đã lưu')
   self.assertEqual(book.worksheets[0]['B25'].value,'Chưa điểm danh')
   self.assertEqual(book.worksheets[2].max_row,121)
-  for query in ('month=2026-13','month=2026-02&class_id=999999'):
-   status,_,_=self.get('/api/attendance/report?class_id='+str(class_id)+'&'+query)
+  for path in (f'/api/attendance/report?class_id={class_id}&month=2026-13','/api/attendance/report?class_id=999999&month=2026-02'):
+   status,_,_=self.get(path)
    self.assertEqual(status,400)
 
  def test_reject_duplicate_students_without_partial_write(self):
