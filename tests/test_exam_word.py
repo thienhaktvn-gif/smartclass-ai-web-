@@ -55,6 +55,36 @@ class WordExamTest(unittest.TestCase):
   with self.assertRaisesRegex(ValueError,'Thiếu đáp án'):parse_word(bad)
   conflict=word_bytes(['Câu 1. Nội dung nào đúng?','A. Một','B. Hai','C. Ba','D. Bốn','Đáp án: A','ĐÁP ÁN','1.B'])
   with self.assertRaisesRegex(ValueError,'mâu thuẫn'):parse_word(conflict)
+ def test_realistic_three_column_answer_table(self):
+  doc=Document()
+  for line in ('Câu 1. Phần mềm nào là hệ điều hành?',
+               'A. Word','B. Paint','C. Windows','D. PowerPoint',
+               'Câu 2. Thiết bị nào phát âm thanh?',
+               'A. Chuột','B. Máy quét','C. Loa','D. Bàn phím','Đáp án:'):
+   doc.add_paragraph(line)
+  table=doc.add_table(rows=1,cols=3)
+  for cell,value in zip(table.rows[0].cells,['Câu','','Đáp án']):cell.text=value
+  for index,answer in ((1,'C'),(2,'C')):
+   row=table.add_row()
+   for cell,value in zip(row.cells,[str(index),'',answer]):cell.text=value
+  data=io.BytesIO();doc.save(data)
+  result=parse_word(data.getvalue())
+  self.assertEqual(len(result),2)
+  self.assertEqual([q['answer'] for q in result],['C','C'])
+  variants=make_variants(result,4)
+  self.assertEqual(len(variants),4)
+  for paper in variants:
+   for question in paper:
+    original=result[question['source_number']-1]
+    self.assertEqual(question['options'][question['answer']],original['options'][original['answer']])
+
+ def test_reject_unsafe_table_content(self):
+  d=Document();d.add_paragraph('Câu 1. Câu hỏi hợp lệ?')
+  for value in ('A. Một','B. Hai','C. Ba','D. Bốn'):d.add_paragraph(value)
+  table=d.add_table(rows=1,cols=2);table.cell(0,0).text='1';table.cell(0,1).text='Z'
+  out=io.BytesIO();d.save(out)
+  with self.assertRaisesRegex(ValueError,'đúng mẫu'):parse_word(out.getvalue())
+
  def test_reject_drawing_and_tables(self):
   import base64
   from tempfile import TemporaryDirectory
@@ -65,6 +95,6 @@ class WordExamTest(unittest.TestCase):
    b=io.BytesIO();d.save(b)
    with self.assertRaisesRegex(ValueError,'hình ảnh'):parse_word(b.getvalue())
   doc=Document();doc.add_table(rows=2,cols=2);b=io.BytesIO();doc.save(b)
-  with self.assertRaisesRegex(ValueError,'bảng Word'):parse_word(b.getvalue())
+  with self.assertRaisesRegex(ValueError,'Bảng đáp án'):parse_word(b.getvalue())
 
 if __name__=='__main__':unittest.main()
