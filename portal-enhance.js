@@ -2,11 +2,19 @@
 const layer=document.getElementById('portalChoice');
 const show=()=>{layer.classList.remove('is-hidden');document.body.style.overflow='hidden'};
 const hide=()=>{layer.classList.add('is-hidden');document.body.style.overflow=''};
-function enter(role){hide();if(role==='student')go('student');else if(state.user)go('home');else go('login');}
+function enter(role){
+ hide();
+ if(role==='student'){go('student');return}
+ if(role==='admin'||role==='teacher'){
+  if(state.user){go(state.role==='admin'?'admin':'home');return}
+  window.setLoginPortal(role);
+  go('login');
+ }
+}
 layer.addEventListener('click',e=>{const b=e.target.closest('[data-portal]');if(b)enter(b.dataset.portal)});
 document.getElementById('portalSwitch').addEventListener('click',show);
 const route=location.pathname;
-if(route==='/student'||route==='/games')hide();else if(route==='/auth/login'||route==='/teacher'||route==='/planner'){hide();}else show();
+if(route==='/student'||route==='/games')hide();else if(route==='/auth/login'||route==='/auth/admin'||route==='/teacher'||route==='/planner'){hide();}else show();
 // A genuine .docx is produced by the authenticated server, not by renaming HTML.
 const btn=document.getElementById('planWord');
 if(btn)btn.addEventListener('click',async()=>{
