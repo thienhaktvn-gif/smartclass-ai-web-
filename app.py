@@ -211,9 +211,9 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))})
   if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':('postgres' if os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' else 'sqlite'),'persistent':(os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.getenv('DATABASE_URL')) or os.getenv('SMARTCLASS_PERSISTENT','0')=='1')})
-  if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games','/attendanceReport'):
+  if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games','/attendanceReport','/exams'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/admin.js','/attendance-report.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/admin.js','/attendance-report.js','/word-exam.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session()
@@ -501,6 +501,33 @@ class H(BaseHTTPRequestHandler):
    return self.sendj(200,{'exam':dict(e),'items':[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]})
   s=self.auth()
   if not s:return
+  if p=='/api/exams/word/preview':
+   from exam_word import parse_word
+   try:
+    filename=str(d.get('filename','')).strip()
+    if not filename.lower().endswith('.docx'):return self.err(400,'Vui lòng chọn file Word .docx (không hỗ trợ .doc).')
+    encoded=str(d.get('file',''))
+    if len(encoded)>2_800_000:return self.err(400,'File Word tối đa 2 MB.')
+    raw=base64.b64decode(encoded,validate=True)
+    items=parse_word(raw)
+    return self.sendj(200,{'items':items,'count':len(items),'message':'Hãy kiểm tra nội dung từng câu và đáp án trước khi trộn.'})
+   except (ValueError,TypeError,base64.binascii.Error) as exc:return self.err(400,str(exc)[:350])
+   except Exception:return self.err(400,'Không đọc được tài liệu Word. Hãy lưu lại dưới dạng .docx hợp lệ.')
+  if p=='/api/exams/word/export':
+   from exam_word import export_package
+   try:
+    count=int(d.get('variants',0))
+    title=str(d.get('title','')).strip()
+    data=export_package(title,d.get('items'),count)
+   except (ValueError,TypeError) as exc:return self.err(400,str(exc)[:350])
+   if len(data)>15_000_000:return self.err(413,'Đề tạo ra quá lớn để xuất trong một lần.')
+   self.send_response(200)
+   self.send_header('Content-Type','application/zip')
+   self.send_header('Content-Disposition','attachment; filename="De_tron_va_dap_an.zip"')
+   self.send_header('Content-Length',str(len(data)))
+   self.send_header('Cache-Control','private, no-store')
+   self.send_header('X-Content-Type-Options','nosniff')
+   self.end_headers();return self.wfile.write(data)
   if p=='/api/ai/chat':
    if not AI_KEY:return self.err(503,'Chưa cấu hình Gemini API trên máy chủ.')
    if not throttle('chat:'+s['username'],12,60):return self.err(429,'Bạn đã gửi nhiều tin nhắn. Vui lòng thử lại sau một phút.')
