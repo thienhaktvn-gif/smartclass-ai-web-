@@ -330,9 +330,9 @@ class H(BaseHTTPRequestHandler):
    TENANT.set(None)
    with db() as c:u=c.execute('SELECT * FROM users WHERE username=?',(name,)).fetchone()
    if not u or not checkpw(pw,u['password_hash']):return self.err(401,'Sai tài khoản hoặc mật khẩu.')
-   portal=str(d.get('portal','teacher')).strip().lower()
-   if portal not in ('teacher','admin'):return self.err(400,'Cổng đăng nhập không hợp lệ.')
    actual_role='admin' if name==ADMIN_USER else 'teacher'
+   portal=str(d.get('portal',actual_role)).strip().lower()
+   if portal not in ('teacher','admin'):return self.err(400,'Cổng đăng nhập không hợp lệ.')
    if portal!=actual_role:return self.err(403,'Tài khoản không có quyền đăng nhập tại cổng đã chọn.')
    tok=secrets.token_urlsafe(32);csrf=secrets.token_urlsafe(24)
    context=TENANT.set(None)
