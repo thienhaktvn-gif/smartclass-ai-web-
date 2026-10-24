@@ -22,8 +22,30 @@
   [heading,filter,go,status,results,prev,next].forEach(x => block.appendChild(x));
   root.prepend(block);
   let page = 1, totalPages = 0, busy = false;
+  let authenticated = false;
+  async function checkSession() {
+    try {
+      const response = await fetch('/api/me', {credentials:'same-origin',cache:'no-store'});
+      if (!response.ok) return false;
+      const data = await response.json();
+      return Boolean(data.user);
+    } catch (_) { return false; }
+  }
+  async function refreshIfVisible() {
+    if (!root.classList.contains('active')) return;
+    authenticated = await checkSession();
+    if (!authenticated) {
+      results.replaceChildren();
+      status.textContent = 'Đăng nhập để xem ngân hàng câu hỏi.';
+      prev.disabled = true;
+      next.disabled = true;
+      return;
+    }
+    await load();
+  }
   async function load() {
     if (busy) return;
+    if (!authenticated) { await refreshIfVisible(); return; }
     busy = true;
     status.textContent = 'Đang tải...';
     try {
@@ -42,11 +64,20 @@
       }
       prev.disabled = page <= 1;
       next.disabled = page >= totalPages;
-    } catch (error) { status.textContent = 'Lỗi: ' + error.message; }
+    } catch (error) {
+      status.textContent = 'Lỗi: ' + error.message;
+      if (String(error.message).includes('đăng nhập')) authenticated = false;
+    }
     finally { busy = false; }
   }
   go.onclick = () => { page=1; load(); };
   prev.onclick = () => { if (page > 1) { page--; load(); } };
   next.onclick = () => { if (page < totalPages) { page++; load(); } };
-  load();
+  // The bank exists in DOM before a teacher signs in. Reload on opening the tab,
+  // not during anonymous page startup; otherwise the first 401 remains stuck.
+  const observer = new MutationObserver(() => {
+    if (root.classList.contains('active')) refreshIfVisible();
+  });
+  observer.observe(root,{attributes:true,attributeFilter:['class']});
+  if (root.classList.contains('active')) refreshIfVisible();
 })();
