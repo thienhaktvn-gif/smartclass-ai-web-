@@ -71,7 +71,7 @@ document.getElementById('wordExamPublish').addEventListener('click',async()=>{
  if(!confirm('Xác nhận các câu và đáp án đã được giáo viên duyệt? Đề sẽ được lưu vào ngân hàng và công bố cho thi trực tuyến.'))return;
  const button=document.getElementById('wordExamPublish');button.disabled=true;
  try{
-  const r=await api('exams/word/publish',{title,items:reviewed,subject:'Tin học',grade:'9',duration:45});
+  const r=await api('exams/word/publish',{title,items:reviewed,subject:$id('wordOnlineSubject').value.trim(),grade:$id('wordOnlineGrade').value.trim(),duration:Number($id('wordOnlineDuration').value)});
   message('Đã lưu '+r.count+' câu hỏi và đề #'+r.id+'. Vào danh sách Đề đã tạo, bấm Cấp mã dự thi để giao cho học sinh.');
   await refresh();renderExams();renderExamPick();
  }catch(error){message('Không lưu được đề trực tuyến: '+error.message)}
