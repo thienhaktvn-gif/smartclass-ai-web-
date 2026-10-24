@@ -60,4 +60,16 @@ class RoleSeparationTest(unittest.TestCase):
   status,_,_=self.request('/api/admin/teachers')
   self.assertEqual(status,401)
 
+ def test_separate_admin_teacher_login_portals(self):
+  status,_,_=self.request('/api/login',{'username':'teacher_case','password':'TestTeacherPass123','portal':'admin'})
+  self.assertEqual(status,403)
+  status,_,_=self.request('/api/login',{'username':'admin_case','password':'TestAdminPass123','portal':'teacher'})
+  self.assertEqual(status,403)
+  status,_,cookie=self.request('/api/login',{'username':'admin_case','password':'TestAdminPass123','portal':'admin'})
+  self.assertEqual(status,200)
+  self.assertTrue(cookie.startswith('scsession='))
+  status,_,cookie=self.request('/api/login',{'username':'teacher_case','password':'TestTeacherPass123','portal':'teacher'})
+  self.assertEqual(status,200)
+  self.assertTrue(cookie.startswith('scsession='))
+
 if __name__=='__main__':unittest.main()
