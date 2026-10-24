@@ -51,7 +51,7 @@ def parse_word(raw):
     if cells[1]:raise ValueError('Cột giữa của bảng đáp án cần để trống.')
     cells=[cells[0],cells[2]]
    if not any(cells):continue
-   if re.fullmatch(r'Câu(?:\\s+hỏi)?',cells[0],re.I) and re.fullmatch(r'Đáp\\s*án',cells[1],re.I):continue
+   if re.fullmatch(r'Câu(?:\s+hỏi)?',cells[0],re.I) and re.fullmatch(r'Đáp\s*án',cells[1],re.I):continue
    if not re.fullmatch(r'[0-9]{1,3}',cells[0]) or not re.fullmatch(r'[ABCD]',cells[1],re.I):
     raise ValueError('Bảng đáp án chưa đúng mẫu. Mỗi dòng cần số câu và một chữ A, B, C hoặc D.')
    number=int(cells[0]);letter=cells[1].upper()
