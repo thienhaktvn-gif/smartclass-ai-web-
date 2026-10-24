@@ -49,6 +49,18 @@ jobs:
           node --check app.js
           node --check admin.js
           node --check school-admin.js
+      - name: Check registration form matching
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          page=Path('index.html').read_text(encoding='utf-8')
+          script=Path('accounts.js').read_text(encoding='utf-8')
+          assert 'id="registerForm"' in page
+          assert 'name="username" required minlength="5"' in page
+          assert 'name="username" required minlength="5" maxlength="32" autocomplete="username" pattern=' not in page
+          assert 'usernameRule=/^[a-z][a-z0-9_.-]{4,31}$/' in script
+          assert "username.value.trim().toLowerCase()" in script
+          PY
       - name: Check route contract
         run: |
           python - <<'PY'

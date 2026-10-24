@@ -306,11 +306,12 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/register':
    if not (os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))):return self.err(403,'Đăng ký chỉ được bật khi lưu trữ bền vững đã được cấu hình và xác minh.')
    address=self.client_address[0]
-   if not throttle('register:'+address,5,3600):return self.err(429,'Bạn đã tạo quá nhiều yêu cầu đăng ký.')
    name=str(d.get('username','')).strip().lower(); pw=str(d.get('password',''))
    if not re.fullmatch(r'[a-z][a-z0-9_.-]{4,31}',name):return self.err(400,'Tên đăng nhập gồm 5–32 ký tự không dấu, bắt đầu bằng chữ cái.')
    if name==ADMIN_USER:return self.err(409,'Tên đăng nhập không khả dụng.')
    if len(pw)<12 or len(pw)>128 or not re.search('[A-Z]',pw) or not re.search('[a-z]',pw) or not re.search('[0-9]',pw):return self.err(400,'Mật khẩu cần 12–128 ký tự, gồm chữ hoa, chữ thường và chữ số.')
+   # Invalid form submissions should not consume the signup limit.
+   if not throttle('register:'+address,5,3600):return self.err(429,'Đã gửi quá nhiều đăng ký hợp lệ trong một giờ. Vui lòng thử lại sau.')
    TENANT.set(None)
    with db() as c:
     if c.execute('SELECT 1 FROM users WHERE username=?',(name,)).fetchone():return self.err(409,'Tên đăng nhập đã được sử dụng.')
