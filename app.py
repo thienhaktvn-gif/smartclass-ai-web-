@@ -213,7 +213,7 @@ class H(BaseHTTPRequestHandler):
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':('postgres' if os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' else 'sqlite'),'persistent':(os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.getenv('DATABASE_URL')) or os.getenv('SMARTCLASS_PERSISTENT','0')=='1')})
   if p in ('/','/index.html') or p.startswith('/auth/') or p in ('/dashboard','/teacher','/student','/planner','/games'):
    b=(ROOT/'index.html').read_bytes();self.send_response(200);self.send_header('Content-Type','text/html; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.send_header('X-Content-Type-Options','nosniff');self.end_headers();return self.wfile.write(b)
-  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/admin.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
+  if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/admin.js','/attendance-report.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session()
