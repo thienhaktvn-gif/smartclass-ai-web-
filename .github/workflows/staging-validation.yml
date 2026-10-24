@@ -47,6 +47,7 @@ jobs:
           node --check accounts.js
           node --check bank16.js
           node --check app.js
+          node --check admin.js
           node --check school-admin.js
       - name: Check route contract
         run: |
