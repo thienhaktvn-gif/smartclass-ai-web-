@@ -88,10 +88,11 @@ def validate_questions(items):
   text=str(q.get('content','')).strip()
   options=q.get('options')
   answer=str(q.get('answer','')).upper().strip()
-  if len(text)<3 or len(text)>4000 or not isinstance(options,dict) or set(options)!=set('ABCD') or answer not in 'ABCD':
+  if len(text)<3 or len(text)>4000 or not isinstance(options,dict) or set(options)!=set('ABCD') or answer not in ('A','B','C','D'):
    raise ValueError('Câu '+str(n)+' thiếu nội dung, phương án hoặc đáp án.')
   opts={key:str(options[key]).strip() for key in 'ABCD'}
   if any(not x or len(x)>2000 for x in opts.values()):raise ValueError('Phương án không hợp lệ ở câu '+str(n)+'.')
+  if len(set(opts.values()))<4:raise ValueError('Câu '+str(n)+' có phương án trùng nội dung. Vui lòng sửa trước khi trộn.')
   clean.append({'number':n,'content':text,'options':opts,'answer':answer})
  return clean
 
