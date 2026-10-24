@@ -23,6 +23,11 @@ MAX_QUESTIONS=150
 def parse_word(raw):
  if len(raw)>2_000_000:raise ValueError('File Word tối đa 2 MB.')
  if not zipfile.is_zipfile(io.BytesIO(raw)):raise ValueError('Chỉ chấp nhận file Word .docx hợp lệ.')
+ with zipfile.ZipFile(io.BytesIO(raw)) as package:
+  if len(package.infolist())>400 or sum(item.file_size for item in package.infolist())>20_000_000:
+   raise ValueError('Tài liệu Word có cấu trúc hoặc kích thước giải nén vượt giới hạn an toàn.')
+  if any(name.startswith('word/media/') for name in package.namelist()):
+   raise ValueError('File Word chứa hình ảnh. Chưa thể bảo toàn hình ảnh khi trộn; vui lòng sử dụng đề chỉ có văn bản.')
  doc=Document(io.BytesIO(raw))
  if any(node.tag.rsplit('}',1)[-1] in ('drawing','pict','oMath','oMathPara','object','altChunk') for node in doc.element.body.iter()):
   raise ValueError('Đề có hình ảnh, công thức Equation hoặc đối tượng nhúng. Chức năng trộn văn bản chưa bảo toàn được các thành phần này; vui lòng dùng đề chỉ có chữ hoặc biên soạn lại để tránh mất nội dung.')
