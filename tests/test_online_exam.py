@@ -61,7 +61,7 @@ class OnlineExamFlow(unittest.TestCase):
   self.assertEqual(status,404)
   status,share,_=self.teacher('/api/online/share',{'exam_id':eid})
   self.assertEqual(status,200,share);code=share['exam_code']
-  status,_,_=self.request('/api/online/start',{'exam_code':'INVALID00000','student_name':'Học sinh thử','student_code':'HS001'})
+  status,_,_=self.request('/api/online/start',{'exam_code':'ABCDEFGHJKLM','student_name':'Học sinh thử','student_code':'HS001'})
   self.assertEqual(status,404)
   status,started,_=self.request('/api/online/start',{'exam_code':code,'student_name':'Học sinh thử','student_code':'HS001'})
   self.assertEqual(status,200,started)
@@ -71,7 +71,6 @@ class OnlineExamFlow(unittest.TestCase):
   with app.db() as db:
    raw=db.execute('SELECT q.* FROM questions q JOIN exam_questions eq ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.ord',(eid,)).fetchall()
   from online_exam import make_form
-  hidden=make_form(raw,app.TENANT.get() or 0)
   # Inspect randomized issued form through server-stored seed, not the browser.
   with app.db() as db:run=db.execute('SELECT seed FROM online_exam_sessions WHERE token_hash=?',(__import__('online_exam').digest(started['attempt_token']),)).fetchone()
   forms=make_form(raw,int(run['seed']))
