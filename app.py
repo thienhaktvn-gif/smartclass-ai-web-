@@ -501,6 +501,33 @@ class H(BaseHTTPRequestHandler):
    return self.sendj(200,{'exam':dict(e),'items':[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]})
   s=self.auth()
   if not s:return
+  if p=='/api/exams/word/preview':
+   from exam_word import parse_word
+   try:
+    filename=str(d.get('filename','')).strip()
+    if not filename.lower().endswith('.docx'):return self.err(400,'Vui lòng chọn file Word .docx (không hỗ trợ .doc).')
+    encoded=str(d.get('file',''))
+    if len(encoded)>2_800_000:return self.err(400,'File Word tối đa 2 MB.')
+    raw=base64.b64decode(encoded,validate=True)
+    items=parse_word(raw)
+    return self.sendj(200,{'items':items,'count':len(items),'message':'Hãy kiểm tra nội dung từng câu và đáp án trước khi trộn.'})
+   except (ValueError,TypeError,base64.binascii.Error) as exc:return self.err(400,str(exc)[:350])
+   except Exception:return self.err(400,'Không đọc được tài liệu Word. Hãy lưu lại dưới dạng .docx hợp lệ.')
+  if p=='/api/exams/word/export':
+   from exam_word import export_package
+   try:
+    count=int(d.get('variants',0))
+    title=str(d.get('title','')).strip()
+    data=export_package(title,d.get('items'),count)
+   except (ValueError,TypeError) as exc:return self.err(400,str(exc)[:350])
+   if len(data)>15_000_000:return self.err(413,'Đề tạo ra quá lớn để xuất trong một lần.')
+   self.send_response(200)
+   self.send_header('Content-Type','application/zip')
+   self.send_header('Content-Disposition','attachment; filename="De_tron_va_dap_an.zip"')
+   self.send_header('Content-Length',str(len(data)))
+   self.send_header('Cache-Control','private, no-store')
+   self.send_header('X-Content-Type-Options','nosniff')
+   self.end_headers();return self.wfile.write(data)
   if p=='/api/ai/chat':
    if not AI_KEY:return self.err(503,'Chưa cấu hình Gemini API trên máy chủ.')
    if not throttle('chat:'+s['username'],12,60):return self.err(429,'Bạn đã gửi nhiều tin nhắn. Vui lòng thử lại sau một phút.')
