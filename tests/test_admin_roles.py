@@ -11,6 +11,7 @@ import app
 
 class RoleSeparationTest(unittest.TestCase):
  def setUp(self):
+  app.RATE.clear()
   self.tmp=tempfile.TemporaryDirectory()
   self.orig=(app.DB,app.TENANT_DIR,app.ADMIN_USER,app.ADMIN_PASSWORD)
   app.DB=Path(self.tmp.name)/'root.db'
@@ -28,7 +29,7 @@ class RoleSeparationTest(unittest.TestCase):
  def tearDown(self):
   self.server.shutdown();self.server.server_close();self.thread.join(timeout=5)
   app.DB,app.TENANT_DIR,app.ADMIN_USER,app.ADMIN_PASSWORD=self.orig
-  app.TENANT.set(None);self.tmp.cleanup()
+  app.TENANT.set(None);app.RATE.clear();self.tmp.cleanup()
 
  def request(self,path,payload=None,cookie='',csrf=''):
   headers={}
