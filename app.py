@@ -506,7 +506,7 @@ class H(BaseHTTPRequestHandler):
    student_code=str(d.get('student_code','')).strip().upper()
    if not valid_student(name,student_code):return self.err(400,'Cần họ tên (2–80 ký tự) và mã học sinh (3–32 ký tự chữ, số, gạch ngang).')
    if not re.fullmatch(r'[A-Z2-9]{12,24}',code):return self.err(400,'Mã dự thi không hợp lệ.')
-   if not throttle('online-start:'+self.client_address[0],30,900):return self.err(429,'Quá nhiều lần yêu cầu bắt đầu bài thi.')
+   if not throttle('online-start:'+self.client_address[0],300,900):return self.err(429,'Quá nhiều lần yêu cầu bắt đầu bài thi.')
    context=TENANT.set(None)
    try:
     with db() as c:link=c.execute('SELECT teacher_username,exam_id FROM online_exam_links WHERE code_hash=? AND active=1',(digest(code),)).fetchone()
