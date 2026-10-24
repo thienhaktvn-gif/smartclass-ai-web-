@@ -11,6 +11,7 @@ import app
 
 class RoleSeparationTest(unittest.TestCase):
  def setUp(self):
+  app.RATE.clear()
   self.tmp=tempfile.TemporaryDirectory()
   self.orig=(app.DB,app.TENANT_DIR,app.ADMIN_USER,app.ADMIN_PASSWORD)
   app.DB=Path(self.tmp.name)/'root.db'
@@ -28,11 +29,12 @@ class RoleSeparationTest(unittest.TestCase):
  def tearDown(self):
   self.server.shutdown();self.server.server_close();self.thread.join(timeout=5)
   app.DB,app.TENANT_DIR,app.ADMIN_USER,app.ADMIN_PASSWORD=self.orig
-  app.TENANT.set(None);self.tmp.cleanup()
+  app.TENANT.set(None);app.RATE.clear();self.tmp.cleanup()
 
- def request(self,path,payload=None,cookie=''):
+ def request(self,path,payload=None,cookie='',csrf=''):
   headers={}
   if cookie:headers['Cookie']=cookie
+  if csrf:headers['X-CSRF-Token']=csrf
   if payload is not None:headers['Content-Type']='application/json'
   req=Request(f'http://127.0.0.1:{self.server.server_port}{path}',
      data=json.dumps(payload).encode() if payload is not None else None,headers=headers)
@@ -71,5 +73,50 @@ class RoleSeparationTest(unittest.TestCase):
   status,_,cookie=self.request('/api/login',{'username':'teacher_case','password':'TestTeacherPass123','portal':'teacher'})
   self.assertEqual(status,200)
   self.assertTrue(cookie.startswith('scsession='))
+
+
+ def test_admin_reset_requires_role_and_forces_change(self):
+  admin=self.login('admin_case','TestAdminPass123')
+  teacher=self.login('teacher_case','TestTeacherPass123')
+  _,admin_profile,_=self.request('/api/me',cookie=admin)
+  _,teacher_profile,_=self.request('/api/me',cookie=teacher)
+  body={'username':'teacher_case','confirm':'teacher_case'}
+  status,_,_=self.request('/api/admin/password-reset',body,cookie=teacher,csrf=teacher_profile['csrf'])
+  self.assertEqual(status,403)
+  status,_,_=self.request('/api/admin/password-reset',body,cookie=admin)
+  self.assertEqual(status,401)
+  status,_,_=self.request('/api/admin/password-reset',{'username':'admin_case','confirm':'admin_case'},cookie=admin,csrf=admin_profile['csrf'])
+  self.assertEqual(status,400)
+  status,data,_=self.request('/api/admin/password-reset',body,cookie=admin,csrf=admin_profile['csrf'])
+  self.assertEqual(status,200,data)
+  temporary=data['temporaryPassword']
+  self.assertGreaterEqual(len(temporary),12)
+  self.assertNotIn('password_hash',str(data))
+  status,_,_=self.request('/api/me',cookie=teacher)
+  self.assertEqual(status,200)
+  self.assertIsNone(self.request('/api/me',cookie=teacher)[1]['user'])
+  status,_,_=self.request('/api/login',{'username':'teacher_case','password':'TestTeacherPass123'})
+  self.assertEqual(status,401)
+  forced=self.login('teacher_case',temporary)
+  _,profile,_=self.request('/api/me',cookie=forced)
+  self.assertTrue(profile['mustChangePassword'])
+  status,_,_=self.request('/api/questions',cookie=forced)
+  self.assertEqual(status,403)
+  status,_,_=self.request('/api/questions',{'subject':'Toán'},cookie=forced,csrf=profile['csrf'])
+  self.assertEqual(status,403)
+  status,_,_=self.request('/api/password/change',{'current_password':'incorrect','new_password':'NewSecureTeacher456'},cookie=forced,csrf=profile['csrf'])
+  self.assertEqual(status,401)
+  status,_,_=self.request('/api/password/change',{'current_password':temporary,'new_password':'NewSecureTeacher456'},cookie=forced,csrf=profile['csrf'])
+  self.assertEqual(status,200)
+  status,who,_=self.request('/api/me',cookie=forced)
+  self.assertIsNone(who['user'])
+  updated=self.login('teacher_case','NewSecureTeacher456')
+  _,who,_=self.request('/api/me',cookie=updated)
+  self.assertEqual(who['role'],'teacher')
+  self.assertFalse(who['mustChangePassword'])
+  status,_,_=self.request('/api/login',{'username':'teacher_case','password':temporary})
+  self.assertEqual(status,401)
+  status,_,_=self.request('/api/admin/password-reset',body,cookie=admin,csrf=admin_profile['csrf'])
+  self.assertEqual(status,200)
 
 if __name__=='__main__':unittest.main()

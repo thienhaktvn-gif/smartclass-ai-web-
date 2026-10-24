@@ -55,6 +55,7 @@ def init():
  with db() as c:
   c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,role TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS login_sessions(token_hash TEXT PRIMARY KEY,username TEXT NOT NULL,csrf TEXT NOT NULL,expires INTEGER NOT NULL);
+  CREATE TABLE IF NOT EXISTS password_reset_required(username TEXT PRIMARY KEY, issued INTEGER NOT NULL);
   CREATE TABLE IF NOT EXISTS classes(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE,grade TEXT DEFAULT '');
   CREATE TABLE IF NOT EXISTS students(id INTEGER PRIMARY KEY,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,class_id INTEGER REFERENCES classes(id));
   CREATE TABLE IF NOT EXISTS questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,topic TEXT NOT NULL,content TEXT NOT NULL,a TEXT NOT NULL,b TEXT NOT NULL,c TEXT NOT NULL,d TEXT NOT NULL,answer TEXT NOT NULL CHECK(answer IN ('A','B','C','D')),difficulty TEXT NOT NULL DEFAULT 'Nhận biết',explanation TEXT NOT NULL DEFAULT '',origin TEXT DEFAULT 'manual');
@@ -169,10 +170,10 @@ class H(BaseHTTPRequestHandler):
    context=TENANT.set(None)
    try:
     with db() as c:
-     row=c.execute('SELECT username,csrf,expires FROM login_sessions WHERE token_hash=?',(token_hash,)).fetchone()
+     row=c.execute('SELECT s.username,s.csrf,s.expires,CASE WHEN r.username IS NULL THEN 0 ELSE 1 END must_change FROM login_sessions s LEFT JOIN password_reset_required r ON r.username=s.username WHERE s.token_hash=?',(token_hash,)).fetchone()
    finally:TENANT.reset(context)
    if row and int(row['expires'])>int(time.time()):
-    return {'username':row['username'],'csrf':row['csrf']}
+    return {'username':row['username'],'csrf':row['csrf'],'must_change':bool(row['must_change'])}
   except (KeyError,ValueError,sqlite3.Error):
    return None
   return None
@@ -183,6 +184,8 @@ class H(BaseHTTPRequestHandler):
  def do_GET(self):
   ss=self.session(); TENANT.set(tenant_for(ss['username']) if ss else None)
   p=urlparse(self.path).path
+  if ss and ss['must_change'] and p.startswith('/api/') and p not in ('/api/me','/api/health','/api/registration-status','/api/subjects'):
+   return self.err(403,'Bạn cần đổi mật khẩu tạm trước khi sử dụng hệ thống.')
   if p=='/api/registration-status':return self.sendj(200,{'enabled':os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))})
   if p=='/api/subjects':return self.sendj(200,{'items':SUBJECT_CATALOG,'label':'Danh mục môn học dùng chung'})
   if p=='/api/health':return self.sendj(200,{'ok':True,'aiConfigured':bool(AI_KEY),'aiProvider':'Gemini','imageConfigured':bool(AI_KEY),'videoConfigured':bool(AI_KEY),'storage':('postgres' if os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' else 'sqlite'),'persistent':(os.getenv('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.getenv('DATABASE_URL')) or os.getenv('SMARTCLASS_PERSISTENT','0')=='1')})
@@ -192,7 +195,7 @@ class H(BaseHTTPRequestHandler):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
    s=self.session()
-   return self.sendj(200,{'user':s['username'],'csrf':s['csrf'],'role':'admin' if s['username']==ADMIN_USER else 'teacher'} if s else {'user':None,'role':'guest'})
+   return self.sendj(200,{'user':s['username'],'csrf':s['csrf'],'role':'admin' if s['username']==ADMIN_USER else 'teacher','mustChangePassword':s['must_change']} if s else {'user':None,'role':'guest'})
   if p=='/api/admin/teachers':
    s=self.session()
    if not s:return self.err(401,'Cần đăng nhập.')
@@ -302,6 +305,8 @@ class H(BaseHTTPRequestHandler):
  def do_POST(self):
   ss=self.session(); TENANT.set(tenant_for(ss['username']) if ss else None)
   p=urlparse(self.path).path;d=self.body()
+  if ss and ss['must_change'] and p not in ('/api/password/change','/api/logout'):
+   return self.err(403,'Bạn cần đổi mật khẩu tạm trước khi sử dụng hệ thống.')
   if d is None:return self.err(400,'Dữ liệu JSON không hợp lệ hoặc quá lớn.')
   if p=='/api/register':
    if not (os.environ.get('SMARTCLASS_ALLOW_REGISTRATION','0')=='1' and (os.environ.get('SMARTCLASS_STORAGE_BACKEND')=='postgres' and bool(os.environ.get('DATABASE_URL')) or os.environ.get('SMARTCLASS_PERSISTENT','0')=='1' and DB.is_absolute() and str(DB).startswith('/var/data/'))):return self.err(403,'Đăng ký chỉ được bật khi lưu trữ bền vững đã được cấu hình và xác minh.')
@@ -344,6 +349,45 @@ class H(BaseHTTPRequestHandler):
    finally:TENANT.reset(context)
    secure='; Secure' if self.headers.get('X-Forwarded-Proto','')=='https' or PUBLIC_URL.startswith('https://') else ''
    return self.sendj(200,{'user':name,'csrf':csrf},{'Set-Cookie':f'scsession={tok}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200{secure}'})
+  if p=='/api/admin/password-reset':
+   user=self.auth()
+   if not user:return
+   if user['username']!=ADMIN_USER:return self.err(403,'Chỉ quản trị viên được đặt lại mật khẩu.')
+   target=str(d.get('username','')).strip().lower()
+   if not re.fullmatch(r'[a-z][a-z0-9_.-]{4,31}',target) or target==ADMIN_USER:
+    return self.err(400,'Chọn một tài khoản giáo viên hợp lệ.')
+   if d.get('confirm')!=target:return self.err(400,'Cần xác nhận chính xác tên tài khoản giáo viên.')
+   if not throttle('reset:'+user['username'],12,3600):return self.err(429,'Đã thực hiện quá nhiều lượt đặt lại mật khẩu.')
+   alphabet='ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+   temp=''.join((secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZ'),secrets.choice('abcdefghijkmnopqrstuvwxyz'),secrets.choice('23456789')))+''.join(secrets.choice(alphabet) for _ in range(17))
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     row=c.execute('SELECT role FROM users WHERE username=?',(target,)).fetchone()
+     if not row or row['role']!='teacher':return self.err(404,'Không tìm thấy tài khoản giáo viên.')
+     c.execute('UPDATE users SET password_hash=? WHERE username=?',(hashpw(temp),target))
+     c.execute('INSERT INTO password_reset_required(username,issued) VALUES(?,?) ON CONFLICT(username) DO UPDATE SET issued=excluded.issued',(target,int(time.time())))
+     c.execute('DELETE FROM login_sessions WHERE username=?',(target,))
+   finally:TENANT.reset(context)
+   return self.sendj(200,{'ok':True,'username':target,'temporaryPassword':temp,'message':'Mật khẩu tạm chỉ hiển thị một lần; hãy chuyển trực tiếp cho đúng giáo viên.'})
+  if p=='/api/password/change':
+   user=self.auth()
+   if not user:return
+   old=str(d.get('current_password',''))
+   new=str(d.get('new_password',''))
+   if not 12<=len(new)<=128 or not re.search('[A-Z]',new) or not re.search('[a-z]',new) or not re.search('[0-9]',new):
+    return self.err(400,'Mật khẩu mới cần 12–128 ký tự, gồm chữ hoa, chữ thường và chữ số.')
+   if old==new:return self.err(400,'Mật khẩu mới phải khác mật khẩu hiện tại.')
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     row=c.execute('SELECT password_hash FROM users WHERE username=?',(user['username'],)).fetchone()
+     if not row or not checkpw(old,row['password_hash']):return self.err(401,'Mật khẩu hiện tại không chính xác.')
+     c.execute('UPDATE users SET password_hash=? WHERE username=?',(hashpw(new),user['username']))
+     c.execute('DELETE FROM password_reset_required WHERE username=?',(user['username'],))
+     c.execute('DELETE FROM login_sessions WHERE username=?',(user['username'],))
+   finally:TENANT.reset(context)
+   return self.sendj(200,{'ok':True,'message':'Đổi mật khẩu thành công. Mọi phiên cũ đã hết hiệu lực; vui lòng đăng nhập lại.'})
   if p=='/api/games/answer':
    try:gid=int(d.get('game_id'));qid=int(d.get('question_id'));choice=str(d.get('choice','')).upper()
    except:return self.err(400,'Câu trả lời không hợp lệ.')

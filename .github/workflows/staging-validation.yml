@@ -48,6 +48,7 @@ jobs:
           node --check bank16.js
           node --check app.js
           node --check admin.js
+          node --check app.js
           node --check school-admin.js
       - name: Check registration form matching
         run: |
