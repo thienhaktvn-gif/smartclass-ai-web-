@@ -556,9 +556,12 @@ class H(BaseHTTPRequestHandler):
      outcome=score_form(forms,answers)
      score=outcome['score'];correct=outcome['correct'];total=len(forms)
      feedback=('Hoàn thành rất tốt.' if score>=8 else 'Đã đạt kiến thức cơ bản.' if score>=5 else 'Cần ôn tập thêm các nội dung chưa vững.')
+     if c.execute('SELECT 1 FROM online_exam_results WHERE exam_id=? AND student_code=?',(run['exam_id'],run['student_code'])).fetchone():
+      return self.err(409,'Mã học sinh đã có bài nộp cho đề này.')
      cur=c.execute('INSERT INTO attempts(exam_id,student_name,access_code_hash,form_seed,score,correct,total,answers,feedback) VALUES(?,?,?,?,?,?,?,?,?)',(run['exam_id'],run['student_name'],digest(run['code_hash']),run['seed'],score,correct,total,json.dumps(answers,ensure_ascii=False),feedback))
-     try:c.execute('INSERT INTO online_exam_results(attempt_id,session_hash,exam_id,student_code) VALUES(?,?,?,?)',(cur.lastrowid,digest(token),run['exam_id'],run['student_code']))
-     except sqlite3.IntegrityError:return self.err(409,'Bài thi đã được nộp hoặc mã học sinh đã có kết quả.')
+     c.execute('INSERT INTO online_exam_results(attempt_id,session_hash,exam_id,student_code) VALUES(?,?,?,?)',(cur.lastrowid,digest(token),run['exam_id'],run['student_code']))
+   except sqlite3.IntegrityError:
+    return self.err(409,'Bài thi đã được nộp hoặc mã học sinh đã có kết quả.')
    finally:TENANT.reset(tenant)
    context=TENANT.set(None)
    try:
