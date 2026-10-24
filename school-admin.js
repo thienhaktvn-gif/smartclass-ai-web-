@@ -27,12 +27,16 @@ get('classList').after(classArea);
 const manager=classArea.querySelector('#schoolClassesManager'),feedback=classArea.querySelector('#schoolClassesMsg');
 const escapeHTML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let classBusy=false;
-async function updateClassManager(){
+async function updateClassManager(knownItems){
  if(classBusy)return;classBusy=true;
  try{
-  const r=await fetch('/api/classes',{credentials:'same-origin'});
-  const d=await r.json();if(!r.ok)throw Error(d.error||'Không đọc được lớp học');
-  manager.innerHTML=d.items.map(c=>`<div class="item" data-class-id="${c.id}" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:9px"><div style="flex:1;min-width:150px"><strong>${escapeHTML(c.name)}</strong><div class="meta">Khối ${escapeHTML(c.grade)} · ${c.student_count} học sinh · Mã lớp #${c.id}</div></div><button type="button" class="ghost small" data-school-rename="${c.id}">✎ Đổi tên</button><button type="button" class="ghost small" data-school-delete-class="${c.id}" ${c.student_count>0?'disabled title="Chuyển học sinh đi trước khi xóa"':''}>Xóa lớp trống</button></div>`).join('')||'<p>Chưa có lớp học.</p>';
+  let items=knownItems;
+  if(!items){
+   const r=await fetch('/api/classes',{credentials:'same-origin'});
+   const d=await r.json();if(!r.ok)throw Error(d.error||'Không đọc được lớp học');
+   items=d.items;
+  }
+  manager.innerHTML=items.map(c=>`<div class="item" data-class-id="${c.id}" style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:9px"><div style="flex:1;min-width:150px"><strong>${escapeHTML(c.name)}</strong><div class="meta">Khối ${escapeHTML(c.grade)} · ${c.student_count} học sinh · Mã lớp #${c.id}</div></div><button type="button" class="ghost small" data-school-rename="${c.id}">✎ Đổi tên</button><button type="button" class="ghost small" data-school-delete-class="${c.id}" ${c.student_count>0?'disabled title="Chuyển học sinh đi trước khi xóa"':''}>Xóa lớp trống</button></div>`).join('')||'<p>Chưa có lớp học.</p>';
  }catch(err){feedback.textContent=err.message}finally{classBusy=false}
 }
 manager.addEventListener('click',async e=>{
@@ -49,12 +53,7 @@ manager.addEventListener('click',async e=>{
   try{await request('classes/delete',{id});feedback.textContent='Đã xóa lớp trống.';await loadClasses();await updateClassManager()}catch(err){feedback.textContent=err.message}
  }
 });
-// The existing app refreshes classList after create/import/move; synchronize the new panel.
-let classRefreshQueued=false;
-const classListObs=new MutationObserver(()=>{
- if(classRefreshQueued)return;classRefreshQueued=true;
- queueMicrotask(async()=>{classRefreshQueued=false;await updateClassManager()});
-});
-classListObs.observe(get('classList'),{childList:true});
+// Reuse class data already returned by loadClasses: no duplicate API calls.
+window.addEventListener('school-class-data',e=>updateClassManager(e.detail));
 updateClassManager();
 })();
