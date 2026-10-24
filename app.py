@@ -531,7 +531,8 @@ class H(BaseHTTPRequestHandler):
      c.execute('INSERT INTO online_exam_sessions(token_hash,code_hash,teacher_username,exam_id,student_name,student_code,seed,expires) VALUES(?,?,?,?,?,?,?,?)',(digest(token),digest(code),teacher,exam_id,name,student_code,seed,expire))
    finally:TENANT.reset(context)
    form=make_form(questions,seed)
-   return self.sendj(200,{'attempt_token':token,'exam':{k:exam[k] for k in ('id','title','subject','grade','duration')},'expires':expire,'items':form})
+   safe_form=[{'id':q['id'],'content':q['content'],'options':q['options']} for q in form]
+   return self.sendj(200,{'attempt_token':token,'exam':{k:exam[k] for k in ('id','title','subject','grade','duration')},'expires':expire,'items':safe_form})
   if p=='/api/online/submit':
    from online_exam import digest,make_form,score_form
    token=str(d.get('attempt_token',''))
