@@ -31,8 +31,34 @@ def parse_word(raw):
  doc=Document(io.BytesIO(raw))
  if any(node.tag.rsplit('}',1)[-1] in ('drawing','pict','oMath','oMathPara','object','altChunk') for node in doc.element.body.iter()):
   raise ValueError('Đề có hình ảnh, công thức Equation hoặc đối tượng nhúng. Chức năng trộn văn bản chưa bảo toàn được các thành phần này; vui lòng dùng đề chỉ có chữ hoặc biên soạn lại để tránh mất nội dung.')
+ # Only accept a clearly structured answer-key table at the end of the document.
+ # Never silently flatten arbitrary Word tables into questions or discard them.
+ table_key={}
  if doc.tables:
-  raise ValueError('Đề có bảng Word. Vui lòng chuyển câu hỏi và đáp án thành các đoạn văn bản trước khi nhập, để tránh trộn sai.')
+  if len(doc.tables)!=1:
+   raise ValueError('Chỉ hỗ trợ một bảng đáp án Câu | Đáp án ở cuối đề.')
+  table=doc.tables[0]
+  body_nodes=list(doc.element.body)
+  table_index=next((i for i,node in enumerate(body_nodes) if node is table._element),-1)
+  if table_index<0 or any(node.tag.rsplit('}',1)[-1]=='p' and ''.join(node.itertext()).strip() for node in body_nodes[table_index+1:] if node.tag.rsplit('}',1)[-1]!='sectPr'):
+   raise ValueError('Bảng đáp án phải nằm ở cuối tài liệu Word.')
+  valid_rows=0
+  for row in table.rows:
+   cells=[cell.text.strip() for cell in row.cells]
+   if len(cells) not in (2,3):
+    raise ValueError('Bảng đáp án phải có 2 cột Câu | Đáp án (có thể thêm một cột trống).')
+   if len(cells)==3:
+    if cells[1]:raise ValueError('Cột giữa của bảng đáp án cần để trống.')
+    cells=[cells[0],cells[2]]
+   if not any(cells):continue
+   if re.fullmatch(r'Câu(?:\s+hỏi)?',cells[0],re.I) and re.fullmatch(r'Đáp\s*án',cells[1],re.I):continue
+   if not re.fullmatch(r'[0-9]{1,3}',cells[0]) or not re.fullmatch(r'[ABCD]',cells[1],re.I):
+    raise ValueError('Bảng đáp án chưa đúng mẫu. Mỗi dòng cần số câu và một chữ A, B, C hoặc D.')
+   number=int(cells[0]);letter=cells[1].upper()
+   if number in table_key:
+    raise ValueError('Bảng đáp án có số câu trùng: '+str(number))
+   table_key[number]=letter;valid_rows+=1
+  if not valid_rows:raise ValueError('Bảng đáp án không có câu và đáp án hợp lệ.')
  lines=[]
  for paragraph in doc.paragraphs:
   for line in paragraph.text.splitlines():
@@ -66,12 +92,14 @@ def parse_word(raw):
    else:current['content']+=' '+line
  if current:questions.append(current)
  if not questions:raise ValueError('Không nhận ra câu hỏi. Dùng dạng "Câu 1. Nội dung" và các dòng "A. ...", "B. ...", "C. ...", "D. ...".')
- key={}
+ key=dict(table_key)
  for line in key_text:
   for n,letter in KEY_LINE.findall(line):
    idx=int(n);val=letter.upper()
    if idx in key and key[idx]!=val:raise ValueError('Bảng đáp án bị mâu thuẫn ở câu '+n+'.')
    key[idx]=val
+ if set(key)-{q['number'] for q in questions}:
+  raise ValueError('Bảng đáp án chứa số câu không tồn tại trong đề.')
  seen=set()
  for q in questions:
   n=q['number']
