@@ -66,10 +66,12 @@ def init():
    CREATE TABLE IF NOT EXISTS demo_meta(k TEXT PRIMARY KEY,v TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS games(id INTEGER PRIMARY KEY,title TEXT NOT NULL,topic TEXT NOT NULL,kind TEXT NOT NULL,question_ids TEXT NOT NULL,created TEXT DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS lesson_media(id INTEGER PRIMARY KEY,title TEXT NOT NULL,kind TEXT NOT NULL,content TEXT NOT NULL,filename TEXT DEFAULT '',created TEXT DEFAULT CURRENT_TIMESTAMP);''')
-  row=c.execute('SELECT id FROM users WHERE username=?',(ADMIN_USER,)).fetchone()
+  row=c.execute('SELECT id,role FROM users WHERE username=?',(ADMIN_USER,)).fetchone()
+  if TENANT.get() is None and row and row['role']!='admin':
+   c.execute('UPDATE users SET role=? WHERE id=?',('admin',row['id']))
   if TENANT.get() is None and not row and ADMIN_PASSWORD:
    salt=secrets.token_hex(16);v=hashlib.pbkdf2_hmac('sha256',ADMIN_PASSWORD.encode(),bytes.fromhex(salt),240000).hex()
-   c.execute('INSERT INTO users(username,password_hash,role) VALUES(?,?,?)',(ADMIN_USER,salt+':'+v,'teacher'))
+   c.execute('INSERT INTO users(username,password_hash,role) VALUES(?,?,?)',(ADMIN_USER,salt+':'+v,'admin'))
   if TENANT.get() is None and c.execute('SELECT COUNT(*) FROM questions').fetchone()[0]==0 and os.getenv('SMARTCLASS_DEMO','0')=='1':
    rows=[('Tin học','9','Cấu trúc rẽ nhánh','Trong Python, từ khóa nào bắt đầu câu lệnh điều kiện?','for','if','def','while','B','Nhận biết','if được dùng để kiểm tra điều kiện.'),('Tin học','9','Vòng lặp','Hàm nào tạo dãy số nguyên trong Python?','range','print','input','str','A','Nhận biết','range tạo các giá trị cho vòng lặp.'),('Tin học','9','Kiểu dữ liệu','Kiểu dữ liệu nào biểu diễn Đúng/Sai?','str','list','bool','int','C','Nhận biết','bool có hai giá trị True và False.'),('Tin học','9','Thuật toán','Tìm kiếm nhị phân yêu cầu điều gì?','Mảng đảo ngược','Dữ liệu được sắp xếp','Tất cả phần tử trùng nhau','Chỉ số chẵn','B','Thông hiểu','Tìm kiếm nhị phân cần dãy đã sắp xếp.'),('Tin học','9','Mảng','Chỉ số đầu tiên của list Python là bao nhiêu?','1','-1','0','2','C','Nhận biết','List được đánh chỉ số từ 0.'),('Tin học','9','Độ phức tạp','Thuật toán duyệt lần lượt n phần tử có thời gian O(?)','1','log n','n','n²','C','Thông hiểu','Duyệt n phần tử tuyến tính là O(n).')]
    for r in rows:c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',(*r,'demo'))
@@ -189,7 +191,18 @@ class H(BaseHTTPRequestHandler):
   if p in ('/app.js','/style.css','/ui-motion.js','/learning-addons.js','/portal-enhance.js','/multisubject.js','/accounts.js','/onboarding-fix.js','/showcase-demo.js','/gemini-studio.js','/chatbox.js','/bank16.js','/question-pages.js','/planner-ai.js','/school-admin.js'):
    b=(ROOT/p[1:]).read_bytes();self.send_response(200);self.send_header('Content-Type','text/javascript; charset=utf-8' if p.endswith('.js') else 'text/css; charset=utf-8');self.send_header('Content-Length',str(len(b)));self.end_headers();return self.wfile.write(b)
   if p=='/api/me':
-   s=self.session();return self.sendj(200,{'user':s['username'],'csrf':s['csrf']} if s else {'user':None})
+   s=self.session()
+   return self.sendj(200,{'user':s['username'],'csrf':s['csrf'],'role':'admin' if s['username']==ADMIN_USER else 'teacher'} if s else {'user':None,'role':'guest'})
+  if p=='/api/admin/teachers':
+   s=self.session()
+   if not s:return self.err(401,'Cần đăng nhập.')
+   if s['username']!=ADMIN_USER:return self.err(403,'Chỉ quản trị viên được xem danh sách tài khoản.')
+   context=TENANT.set(None)
+   try:
+    with db() as c:
+     rows=c.execute('SELECT username,role,created FROM users ORDER BY id DESC').fetchall()
+     return self.sendj(200,{'items':[{'username':r['username'],'role':'admin' if r['username']==ADMIN_USER else 'teacher','created':r['created']} for r in rows],'total':len(rows)})
+   finally:TENANT.reset(context)
   if p=='/api/exams/public':
    with db() as c:rr=c.execute('SELECT id,title,subject,grade,duration FROM exams WHERE published=1 ORDER BY id DESC').fetchall()
    return self.sendj(200,{'items':[dict(x) for x in rr]})
