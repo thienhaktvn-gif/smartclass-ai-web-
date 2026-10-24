@@ -719,23 +719,30 @@ class H(BaseHTTPRequestHandler):
     return self.sendj(200,{'id':cur.lastrowid,'url':'/media/'+filename,'kind':media_type,'note':'Nội dung AI tạo thực tế; tệp trên Render Free có thể mất khi khởi động lại.'})
    except (RuntimeError,ValueError,KeyError,TypeError) as e:return self.err(502,str(e) if isinstance(e,RuntimeError) else 'Gemini trả tệp không hợp lệ.')
   if p=='/api/bank16/seed':
+   # One subject per request avoids long transactions and proxy 502 timeouts.
+   # Retrying a successful request is safe: draft title is the idempotency key.
    from bank16 import FACTS,build_exam
+   subject=d.get('subject')
+   if not isinstance(subject,str) or subject not in FACTS:
+    return self.err(400,'Chọn đúng một môn học cho mỗi lượt tạo đề mẫu.')
+   qs,essays=build_exam(subject)
+   if len(qs)!=16 or len(essays)!=3:
+    return self.err(503,'Bộ câu hỏi minh họa của môn học chưa đủ 16 trắc nghiệm và 3 tự luận.')
+   title='Đề ôn tập '+subject+' lớp 8 – 16 TN + 3 TL [MINH HỌA]'
    created={'subjects':0,'questions':0,'draft_exams':0,'essays':0}
    with db() as c:
     c.execute('CREATE TABLE IF NOT EXISTS essay_questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,exam_id INTEGER,content TEXT NOT NULL,origin TEXT NOT NULL)')
-    for subject in FACTS:
-     qs,essays=build_exam(subject)
-     title='Đề ôn tập '+subject+' lớp 8 – 16 TN + 3 TL [MINH HỌA]'
-     row=c.execute('SELECT id FROM exams WHERE title=?',(title,)).fetchone()
-     if row:continue
-     ids=[]
-     for q in qs:
-      ids.append(c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',tuple(q[k] for k in ('subject','grade','topic','content','a','b','c','d','answer','difficulty','explanation','origin'))).lastrowid)
-     eid=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,0)',(title,subject,'8',45)).lastrowid
-     c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,qid,i) for i,qid in enumerate(ids)])
-     c.executemany('INSERT INTO essay_questions(subject,grade,exam_id,content,origin) VALUES(?,?,?,?,?)',[(subject,'8',eid,e,'demo-16x19') for e in essays])
-     created['subjects']+=1;created['questions']+=16;created['draft_exams']+=1;created['essays']+=3
-   return self.sendj(200,{'created':created,'note':'DỮ LIỆU MINH HỌA: đề nháp, tự luận cần giáo viên chấm; không tự công bố.'})
+    row=c.execute('SELECT id FROM exams WHERE title=?',(title,)).fetchone()
+    if row:
+     return self.sendj(200,{'subject':subject,'already':True,'created':created,'note':'Đề môn này đã tồn tại; không tạo trùng hoặc sửa dữ liệu cũ.'})
+    ids=[]
+    for q in qs:
+     ids.append(c.execute('INSERT INTO questions(subject,grade,topic,content,a,b,c,d,answer,difficulty,explanation,origin) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',tuple(q[k] for k in ('subject','grade','topic','content','a','b','c','d','answer','difficulty','explanation','origin'))).lastrowid)
+    eid=c.execute('INSERT INTO exams(title,subject,grade,duration,published) VALUES(?,?,?,?,0)',(title,subject,'8',45)).lastrowid
+    c.executemany('INSERT INTO exam_questions(exam_id,question_id,ord) VALUES(?,?,?)',[(eid,qid,i) for i,qid in enumerate(ids)])
+    c.executemany('INSERT INTO essay_questions(subject,grade,exam_id,content,origin) VALUES(?,?,?,?,?)',[(subject,'8',eid,e,'demo-16x19') for e in essays])
+    created={'subjects':1,'questions':16,'draft_exams':1,'essays':3}
+   return self.sendj(200,{'subject':subject,'already':False,'created':created,'note':'DỮ LIỆU MINH HỌA: đề nháp; tự luận do giáo viên chấm, không tự công bố.'})
   if p=='/api/bank16/essays':
    with db() as c:
     c.execute('CREATE TABLE IF NOT EXISTS essay_questions(id INTEGER PRIMARY KEY,subject TEXT NOT NULL,grade TEXT NOT NULL,exam_id INTEGER,content TEXT NOT NULL,origin TEXT NOT NULL)')

@@ -5,7 +5,28 @@ root.innerHTML=`<h3>📚 Kho đề 16 môn – 16 trắc nghiệm + 3 tự luậ
 root.querySelector('#bank16Subject').innerHTML=opts.map(s=>`<option value="${s}">${s}</option>`).join('');
 const target=document.querySelector('#bank')||document.querySelector('#home')||document.querySelector('#overview')||document.querySelector('main')||document.querySelector('.content')||document.body;target.prepend(root);
 async function api(endpoint,payload){const me=await fetch('/api/me',{credentials:'same-origin'}).then(r=>r.json());if(!me.csrf)throw Error('Hãy đăng nhập giáo viên trước.');const r=await fetch(endpoint,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json','X-CSRF-Token':me.csrf},body:JSON.stringify(payload||{})});const raw=await r.text();let v;try{v=JSON.parse(raw)}catch{throw Error('Máy chủ không trả JSON hợp lệ (HTTP '+r.status+').')}if(!r.ok)throw Error(v.error||'Lỗi HTTP '+r.status);return v}
-const status=root.querySelector('#bank16Status');root.querySelector('#seedBank16').onclick=async e=>{const b=e.currentTarget;b.disabled=true;status.textContent='Đang tạo dữ liệu…';try{const r=await api('/api/bank16/seed',{});status.textContent=`Đã thêm ${r.created.questions} trắc nghiệm, ${r.created.essays} tự luận, ${r.created.draft_exams} đề nháp. ${r.note}`;await loadEssays()}catch(err){status.textContent=err.message}finally{b.disabled=false}};
+const status=root.querySelector('#bank16Status');
+root.querySelector('#seedBank16').onclick=async e=>{
+ const button=e.currentTarget;
+ button.disabled=true;
+ const totals={questions:0,essays:0,draft_exams:0};
+ let processed=0,skipped=0;
+ status.textContent='Đang kiểm tra phiên đăng nhập và chuẩn bị tạo 16 môn…';
+ try{
+  for(const subject of opts){
+   status.textContent=`Đang xử lý ${processed+1}/16: ${subject}. Đã tạo ${totals.draft_exams} đề, ${totals.questions+totals.essays} câu. Không đóng trang khi đang xử lý.`;
+   // Each transaction commits separately; completed subjects survive retries.
+   const result=await api('/api/bank16/seed',{subject});
+   processed++;
+   if(result.already)skipped++;
+   else for(const key of Object.keys(totals))totals[key]+=Number(result.created?.[key]||0);
+  }
+  status.textContent=`Hoàn tất 16/16 môn: tạo mới ${totals.draft_exams} đề nháp (${totals.questions} trắc nghiệm + ${totals.essays} tự luận); bỏ qua ${skipped} đề đã tồn tại. DỮ LIỆU MINH HỌA – giáo viên cần thẩm định.`;
+  await loadEssays();
+ }catch(err){
+  status.textContent=`Đã xử lý ${processed}/16 môn; tạo mới ${totals.draft_exams} đề, bỏ qua ${skipped}. ${err.message} Các môn đã hoàn thành được giữ nguyên. Bấm “Tạo 16 đề mẫu” lần nữa để tiếp tục, không tạo trùng.`;
+ }finally{button.disabled=false}
+};
 async function loadEssays(){try{const v=await api('/api/bank16/essays',{});root.querySelector('#bank16EssayList').textContent=v.items.map(x=>x.subject+' – '+x.content).join('\n\n')||'Chưa có dữ liệu: hãy nhấn tạo 16 đề mẫu.';}catch{root.querySelector('#bank16EssayList').textContent='Đăng nhập giáo viên để xem.';}}
 root.querySelector('#bank16Ai').onclick=async e=>{const b=e.currentTarget;b.disabled=true;const output=root.querySelector('#bank16AiResult');output.textContent='Đang tạo câu tự luận…';try{const v=await api('/api/bank16/ai-essays',{subject:root.querySelector('#bank16Subject').value,topic:root.querySelector('#bank16Topic').value,grade:'8'});output.textContent=v.items.map((x,i)=>`${i+1}. ${x.question}\nGợi ý: ${x.suggested_answer}`).join('\n\n')+'\n\nDỰ THẢO AI – giáo viên cần duyệt.'}catch(err){output.textContent=err.message}finally{b.disabled=false}};
 // External source shortcuts only; they do not read or write teacher question records.

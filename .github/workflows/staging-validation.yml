@@ -45,6 +45,7 @@ jobs:
         run: |
           node --check question-pages.js
           node --check accounts.js
+          node --check bank16.js
       - name: Check route contract
         run: |
           python - <<'PY'
