@@ -523,7 +523,9 @@ class H(BaseHTTPRequestHandler):
     if not c.execute('SELECT 1 FROM classes WHERE id=?',(cid,)).fetchone():return self.err(404,'Không tìm thấy lớp đích.')
     count=c.execute('SELECT COUNT(*) FROM students WHERE id IN ('+','.join('?' for _ in ids)+')',ids).fetchone()[0]
     if count!=len(ids):return self.err(400,'Một số học sinh không tồn tại.')
-    c.executemany('UPDATE students SET class_id=? WHERE id=?',[(cid,i) for i in ids])
+    for offset in range(0,len(ids),350):
+     chunk=ids[offset:offset+350]
+     c.execute('UPDATE students SET class_id=? WHERE id IN ('+','.join('?' for _ in chunk)+')',[cid]+chunk)
    return self.sendj(200,{'moved':len(ids)})
   if p=='/api/students/bulk-delete':
    try:ids=list(dict.fromkeys(int(x) for x in d.get('ids',[])))
@@ -566,18 +568,23 @@ class H(BaseHTTPRequestHandler):
     summary=dict(sorted(Counter(x[2] for x in entries).items()))
     if d.get('preview') is True:return self.sendj(200,{'preview':True,'total':len(entries),'classes':summary})
     if d.get('confirm')!='NHAP_TOAN_TRUONG':return self.err(400,'Cần xem trước phân lớp và xác nhận nhập.')
-    created=0;updated=0;classes_created=0
+    # Batch SQL calls rather than querying/inserting each student individually.
     with db() as c:
-     for cl in summary:
-      if not c.execute('SELECT id FROM classes WHERE name=?',(cl,)).fetchone():
-       grade=''.join(ch for ch in cl if ch.isdigit())[:2]
-       c.execute('INSERT INTO classes(name,grade) VALUES(?,?)',(cl,grade));classes_created+=1
+     existing_classes={r['name'] for r in c.execute('SELECT name FROM classes')}
+     new_classes=[(cl,''.join(ch for ch in cl if ch.isdigit())[:2]) for cl in summary if cl not in existing_classes]
+     if new_classes:c.executemany('INSERT OR IGNORE INTO classes(name,grade) VALUES(?,?)',new_classes)
      classids={r['name']:r['id'] for r in c.execute('SELECT id,name FROM classes')}
-     for code,name,cl in entries:
-      old=c.execute('SELECT id FROM students WHERE code=?',(code,)).fetchone()
-      c.execute('INSERT INTO students(code,name,class_id) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET name=excluded.name,class_id=excluded.class_id',(code,name,classids[cl]))
-      if old:updated+=1
-      else:created+=1
+     codes=[item[0] for item in entries]
+     existing_codes=set()
+     for offset in range(0,len(codes),350):
+      chunk=codes[offset:offset+350]
+      existing_codes.update(row['code'] for row in c.execute('SELECT code FROM students WHERE code IN ('+','.join('?' for _ in chunk)+')',chunk))
+     created=sum(code not in existing_codes for code in codes)
+     updated=len(entries)-created
+     payload=[(code,name,classids[cl]) for code,name,cl in entries]
+     for offset in range(0,len(payload),250):
+      c.executemany('INSERT INTO students(code,name,class_id) VALUES(?,?,?) ON CONFLICT(code) DO UPDATE SET name=excluded.name,class_id=excluded.class_id',payload[offset:offset+250])
+     classes_created=len(new_classes)
     return self.sendj(200,{'imported':len(entries),'created':created,'updated':updated,'classes_created':classes_created,'classes':summary})
    except Exception as e:return self.err(400,'Không đọc được Excel: '+str(e)[:180])
   if p=='/api/demo/multisubject':

@@ -35,15 +35,39 @@ $('#videoForm').addEventListener('submit',async e=>{e.preventDefault();notice('�
 // Quản lý lớp / Excel / điểm danh
 let classes=[],students=[];
 const opts=(data,all=false)=> (all?'<option value="0">Tất cả các lớp</option>':'')+data.map(x=>`<option value="${x.id}">${esc(x.name)} (${x.student_count} HS)</option>`).join('');
+const STUDENT_PAGE_SIZE=120;
+let studentPage=1;
+const studentPager=document.createElement('div');
+studentPager.className='flex';
+studentPager.style.cssText='justify-content:center;align-items:center;gap:10px;margin-top:12px';
+studentPager.innerHTML='<button type="button" class="ghost small" id="studentPagePrev">← Trước</button><span id="studentPageInfo" class="meta"></span><button type="button" class="ghost small" id="studentPageNext">Sau →</button>';
+$('#studentList').after(studentPager);
+studentPager.addEventListener('click',e=>{
+ const direction=e.target.closest('#studentPagePrev')?-1:e.target.closest('#studentPageNext')?1:0;
+ if(direction){studentPage+=direction;renderStudents();}
+});
 async function loadClasses(){if(!state.user)return;try{
  const [c,s]=await Promise.all([api('classes'),api('students')]);classes=c.items;students=s.items;
  for(const id of ['studentClass','excelClass','attClass']){const el=$('#'+id);let old=el.value;el.innerHTML=opts(classes);if(classes.some(x=>String(x.id)===old))el.value=old;}
  {const el=$('#filterClass');let old=el.value;el.innerHTML=opts(classes,true);el.value=old||'0';}
  $('#classList').innerHTML=classes.length?classes.map(x=>`<div class="item"><strong>♧ ${esc(x.name)} <span class="tag">Khối ${esc(x.grade)}</span></strong><p>${x.student_count} học sinh</p></div>`).join(''):'<div class="empty">Chưa có lớp học. Hãy tạo lớp đầu tiên.</div>';
  renderStudents();
+ window.dispatchEvent(new CustomEvent('school-class-data',{detail:classes}));
 }catch(e){notice(e.message,true)}}
-function renderStudents(){const classId=+$('#filterClass').value;let rows=students.filter(x=>!classId||x.class_id===classId);$('#studentCount').textContent=rows.length+' học sinh';$('#studentList').innerHTML=rows.length?rows.map(x=>`<div class="item flex"><div><strong>${esc(x.name)}</strong><span class="meta">Mã: ${esc(x.code)} · Lớp ${esc(x.class_name)}</span></div><button class="ghost small" data-delete-student="${x.id}" aria-label="Xóa ${esc(x.name)}">Xóa</button></div>`).join(''):'<div class="empty">Chưa có học sinh thuộc lớp này.</div>'}
-$('#filterClass').addEventListener('change',renderStudents);
+function renderStudents(){
+ const classId=+$('#filterClass').value;
+ const rows=students.filter(x=>!classId||x.class_id===classId);
+ const pages=Math.max(1,Math.ceil(rows.length/STUDENT_PAGE_SIZE));
+ studentPage=Math.max(1,Math.min(studentPage,pages));
+ const from=(studentPage-1)*STUDENT_PAGE_SIZE;
+ const visible=rows.slice(from,from+STUDENT_PAGE_SIZE);
+ $('#studentCount').textContent=rows.length+' học sinh';
+ $('#studentList').innerHTML=visible.length?visible.map(x=>`<div class="item flex"><div><strong>${esc(x.name)}</strong><span class="meta">Mã: ${esc(x.code)} · Lớp ${esc(x.class_name)}</span></div><button class="ghost small" data-delete-student="${x.id}" aria-label="Xóa ${esc(x.name)}">Xóa</button></div>`).join(''):'<div class="empty">Chưa có học sinh thuộc lớp này.</div>';
+ $('#studentPageInfo').textContent=rows.length?'Hiển thị '+(from+1)+'–'+(from+visible.length)+' / '+rows.length+' · Trang '+studentPage+'/'+pages:'Chưa có học sinh';
+ $('#studentPagePrev').disabled=studentPage<=1;
+ $('#studentPageNext').disabled=studentPage>=pages;
+}
+$('#filterClass').addEventListener('change',()=>{studentPage=1;renderStudents();});
 $('#classForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('classes',Object.fromEntries(new FormData(e.target)));e.target.reset();await loadClasses();notice('Đã tạo lớp thành công.')}catch(x){notice(x.message,true)}});
 $('#studentForm').addEventListener('submit',async e=>{e.preventDefault();try{await api('students',Object.fromEntries(new FormData(e.target)));e.target.elements.code.value='';e.target.elements.name.value='';await loadClasses();notice('Đã thêm học sinh.')}catch(x){notice(x.message,true)}});
 $('#studentList').addEventListener('click',async e=>{const b=e.target.closest('[data-delete-student]');if(!b||!confirm('Bạn chắc chắn muốn xóa hồ sơ học sinh này và lịch sử điểm danh?'))return;try{await api('students/delete',{id:+b.dataset.deleteStudent});await loadClasses();notice('Đã xóa học sinh.')}catch(x){notice(x.message,true)}});
