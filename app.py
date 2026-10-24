@@ -545,7 +545,8 @@ class H(BaseHTTPRequestHandler):
      with db() as c:link=c.execute('SELECT active FROM online_exam_links WHERE code_hash=?',(run['code_hash'],)).fetchone()
     else:link=None
    finally:TENANT.reset(context)
-   if not run or not link or not link['active']:return self.err(404,'Phiên làm bài không tồn tại hoặc mã đã ngừng hoạt động.')
+   if not run or not link:return self.err(404,'Phiên làm bài không tồn tại hoặc mã đã bị xóa.')
+   # Re-issuing a teacher code blocks new starts, but must not discard exams already underway.
    if int(time.time())>int(run['expires'])+30:return self.err(403,'Đã hết thời gian nộp bài.')
    tenant=TENANT.set(tenant_for(run['teacher_username']))
    try:
