@@ -21,7 +21,7 @@ async function refreshAttendanceReport(){
  const cid=document.getElementById('reportClass').value,month=document.getElementById('reportMonth').value;
  const feedback=document.getElementById('reportFeedback');
  const dayTarget=document.getElementById('reportDaySummary'),studentTarget=document.getElementById('reportStudentSummary');
- if(!cid||!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)){feedback.textContent='Hãy chọn lớp và tháng hợp lệ.';return}
+ if(!cid||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)){feedback.textContent='Hãy chọn lớp và tháng hợp lệ.';return}
  feedback.textContent='Đang tải dữ liệu điểm danh đã lưu…';
  dayTarget.replaceChildren();studentTarget.replaceChildren();loadedAttendanceReport=null;
  try{
@@ -45,7 +45,7 @@ document.getElementById('reportMonth').addEventListener('change',refreshAttendan
 document.getElementById('reportExport').addEventListener('click',async()=>{
  const cid=document.getElementById('reportClass').value,month=document.getElementById('reportMonth').value;
  const feedback=document.getElementById('reportFeedback'),button=document.getElementById('reportExport');
- if(!cid||!/^\\d{4}-(0[1-9]|1[0-2])$/.test(month)){feedback.textContent='Chọn lớp và tháng hợp lệ.';return}
+ if(!cid||!/^[0-9]{4}-(0[1-9]|1[0-2])$/.test(month)){feedback.textContent='Chọn lớp và tháng hợp lệ.';return}
  button.disabled=true;
  try{
   const response=await fetch('/api/attendance/report/export?class_id='+encodeURIComponent(cid)+'&month='+encodeURIComponent(month),{credentials:'same-origin'});
