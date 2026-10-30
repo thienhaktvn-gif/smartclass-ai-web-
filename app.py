@@ -344,6 +344,12 @@ class H(BaseHTTPRequestHandler):
    s=self.session()
    if not s:return self.err(401,'Vui lòng đăng nhập giáo viên.')
    with db() as c:
+    if p=='/api/bootstrap':
+     # One authenticated tenant connection for the initial teacher dashboard.
+     # Avoid 2-3 separate remote PostgreSQL handshakes on every login.
+     questions=[dict(x) for x in c.execute('SELECT * FROM questions ORDER BY id DESC LIMIT 500')]
+     exams=[dict(x) for x in c.execute('SELECT e.*,COUNT(eq.question_id) num_questions FROM exams e LEFT JOIN exam_questions eq ON e.id=eq.exam_id GROUP BY e.id ORDER BY e.id DESC')]
+     return self.sendj(200,{'questions':questions,'exams':exams,'aiConfigured':bool(AI_KEY)})
     if p=='/api/classes':
      rows=c.execute('SELECT c.*,COUNT(s.id) student_count FROM classes c LEFT JOIN students s ON s.class_id=c.id GROUP BY c.id ORDER BY c.id DESC').fetchall()
      return self.sendj(200,{'items':[dict(x) for x in rows]})
