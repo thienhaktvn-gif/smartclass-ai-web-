@@ -62,6 +62,21 @@ class PersistentTeacherSessionTest(unittest.TestCase):
   self.assertEqual(self.call('/api/logout',{},cookie=cookie,csrf=login['csrf'])[0],200)
   self.assertEqual(self.call('/api/questions/page',cookie=cookie)[0],401)
 
+ def test_single_request_dashboard_bootstrap(self):
+  status,login,cookie=self.call('/api/login',{'username':'teacher_test','password':'test-password-only'})
+  self.assertEqual(status,200)
+  cookie=cookie.split(';',1)[0]
+  status,d,_=self.call('/api/bootstrap',cookie=cookie)
+  self.assertEqual(status,200,d)
+  self.assertIn('questions',d)
+  self.assertIn('exams',d)
+  self.assertIn('aiConfigured',d)
+  self.assertIsInstance(d['questions'],list)
+  self.assertIsInstance(d['exams'],list)
+  self.assertEqual(self.call('/api/bootstrap')[0],401)
+  self.assertEqual(self.call('/api/logout',{},cookie=cookie,csrf=login['csrf'])[0],200)
+  self.assertEqual(self.call('/api/bootstrap',cookie=cookie)[0],401)
+
  def test_unauthenticated_denied(self):
   self.assertEqual(self.call('/api/questions/page')[0],401)
 
