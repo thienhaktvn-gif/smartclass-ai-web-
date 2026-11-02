@@ -529,7 +529,9 @@ class H(BaseHTTPRequestHandler):
      questions=c.execute('SELECT q.* FROM exam_questions eq JOIN questions q ON q.id=eq.question_id WHERE eq.exam_id=? ORDER BY eq.ord',(exam_id,)).fetchall()
    finally:TENANT.reset(tenant)
    if not questions:return self.err(400,'Đề chưa có câu hỏi.')
-   seed=secrets.randbits(63);token=secrets.token_urlsafe(32)
+   # The PostgreSQL compatibility layer maps SQLite INTEGER to signed INT4.
+   # A 31-bit shuffle seed fits both databases and still yields varied forms.
+   seed=secrets.randbits(31);token=secrets.token_urlsafe(32)
    expire=int(time.time())+int(exam['duration'])*60
    context=TENANT.set(None)
    try:
